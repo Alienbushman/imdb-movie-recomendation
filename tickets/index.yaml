@@ -150,13 +150,13 @@ tickets:
 
   - id: "012"
     title: "Improve Startup Process"
-    status: open
+    status: in_progress
     priority: medium
     component: full_stack
     subtask_dir: 012-improve-startup-process
     subtasks:
-      - { id: ST-001, title: "Backend: Startup Readiness Fields in /status", status: open, effort: low,    depends_on: [] }
-      - { id: ST-002, title: "Frontend: Onboarding Wizard for First-Time Users", status: open, effort: medium, depends_on: [ST-001] }
+      - { id: ST-001, title: "Backend: Startup Readiness Fields in /status", status: done, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "Frontend: Onboarding Wizard for First-Time Users", status: in_progress, effort: medium, depends_on: [ST-001] }
 
   - id: "013"
     title: "Clean Clone Smoke Test + Docker Fix"
