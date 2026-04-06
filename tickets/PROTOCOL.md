@@ -9,13 +9,15 @@ For project-level constraints and development commands, see [`../CLAUDE.md`](../
 
 1. Read this file (you are reading it now)
 2. Read `../CLAUDE.md` — project structure, dev commands, gotchas
-3. Open the ticket's `PROGRESS.md` — find the first subtask with status `Open`
-   - If a subtask is `In Progress`, that is yours (a prior session was interrupted)
-   - If all subtasks are `Done`, the ticket is complete → go to step 7
-4. Check dependencies — if the subtask lists dependencies, verify they are `Done` in PROGRESS.md
-5. Read the subtask file top to bottom
-6. Read every file the subtask will modify — never trust line numbers without verifying
-7. **When the ticket is complete** (all subtasks `Done`): rebuild Docker and verify — see
+3. Open `tickets/index.yaml` — find your ticket and the first subtask with status `open`
+   - If a subtask is `in_progress`, that is yours (a prior session was interrupted)
+   - If all subtasks are `done`, the ticket is complete → go to step 8
+4. **Set status to `in_progress`** in `index.yaml` — both the subtask and the parent ticket
+   (parent ticket moves from `open` → `in_progress`; skip if already `in_progress`)
+5. Check dependencies — if the subtask lists dependencies, verify they are `done` in `index.yaml`
+6. Read the subtask file top to bottom
+7. Read every file the subtask will modify — never trust line numbers without verifying
+8. **When the ticket is complete** (all subtasks `done`): rebuild Docker and verify — see
    **Post-Ticket Completion: Docker Rebuild & Verification** below. This step is mandatory.
 
 ---
@@ -124,16 +126,16 @@ git log --oneline -3
 
 After committing:
 
-1. Change the subtask status to `Done`
-2. Add the date and any notes
-3. Update the completion counter
+1. In `index.yaml`: set the completed subtask status to `done`
+2. In `index.yaml`: set the next eligible subtask status to `in_progress` (or leave the ticket `in_progress` if no more subtasks are ready)
+3. In the ticket's `PROGRESS.md`: change the subtask status to `Done`, add the date and any notes, update the completion counter
 4. Commit:
    ```bash
-   git add tickets/<ticket-folder>/PROGRESS.md
+   git add tickets/index.yaml tickets/<ticket-folder>/PROGRESS.md
    git commit -m "chore: mark <ST-NNN> done in PROGRESS.md"
    ```
 
-Then continue to the next eligible subtask in the same ticket (see **One Ticket Per Session** above). When the ticket is complete, **always** run the Docker rebuild + verification step below before finishing.
+Then continue to the next eligible subtask in the same ticket (see **One Ticket Per Session** above). When the ticket is complete, set the ticket status to `done` in `index.yaml`, then **always** run the Docker rebuild + verification step below before finishing.
 
 ---
 
@@ -175,6 +177,27 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:9137
 
 If any service fails to start, check logs with `docker compose logs <service>` and fix
 before marking the ticket complete.
+
+---
+
+## Recording Decisions and Issues
+
+After completing each subtask, log anything non-obvious in `tickets/NNN-slug/decisions.md`.
+
+Use two distinct sections:
+
+**`## Decisions`** — implementation choices that were not obvious from the spec:
+- Why you picked one approach over another
+- Trade-offs you evaluated
+- Constraints that shaped the implementation
+
+**`## Future Improvements`** — issues, limitations, or follow-on work uncovered during execution:
+- Bugs or edge cases noticed but out of scope for this subtask
+- Tech debt introduced by this change
+- Follow-on tickets that should be created
+- Anything that would have been done differently with more time or scope
+
+If neither section exists in the file yet, create it. Keep entries brief — one or two sentences each is enough.
 
 ---
 

@@ -1,6 +1,8 @@
 ## Machine-readable ticket index
 ## Source of truth for ticket/subtask status. Update this when changing status.
 ## Agents: read this file first to orient before starting any ticket work.
+##
+## Valid status values (ticket and subtask): open → in_progress → done
 
 tickets:
   - id: "001"
