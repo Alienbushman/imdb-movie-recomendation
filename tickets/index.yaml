@@ -77,13 +77,13 @@ tickets:
 
   - id: "006"
     title: "Fast Initial Page Load"
-    status: open
+    status: done
     priority: high
     component: full_stack
     subtask_dir: 006-fast-initial-load
     subtasks:
       - { id: ST-001, title: "Frontend: Try Fast Path on Mount",    status: done, effort: medium, depends_on: [] }
-      - { id: ST-002, title: "Backend: Skip Rescore When DB Fresh", status: open, effort: medium, depends_on: [] }
+      - { id: ST-002, title: "Backend: Skip Rescore When DB Fresh", status: done, effort: medium, depends_on: [] }
 
   - id: "007"
     title: "Improve Language Data"
