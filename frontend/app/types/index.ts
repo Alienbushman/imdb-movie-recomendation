@@ -104,6 +104,35 @@ export interface SimilarResponse {
   total_candidates: number
 }
 
+export interface PersonSearchResult {
+  name_id: string
+  name: string
+  primary_profession: string | null
+  title_count: number
+}
+
+export interface PersonTitleResult {
+  imdb_id: string
+  title: string
+  year: number | null
+  title_type: string
+  imdb_rating: number | null
+  num_votes: number | null
+  runtime_mins: number | null
+  genres: string[]
+  predicted_score: number
+  languages: string[]
+  roles: string[]
+}
+
+export interface PersonTitlesResponse {
+  name_id: string
+  name: string
+  primary_profession: string | null
+  total: number
+  results: PersonTitleResult[]
+}
+
 export interface PipelineStatus {
   rated_titles_count: number
   candidates_count: number
@@ -131,6 +160,7 @@ export interface CardDisplayItem {
   score_label?: string         // e.g. "★ 8.2" or "87% match"
   score_color?: string         // e.g. "success" or "info"
   extra_badges?: Array<{ label: string; color: string }>  // e.g. "Seen" chip
+  roles?: string[]             // only for PersonTitleResult
 }
 
 export function toCardItem(rec: Recommendation): CardDisplayItem {
@@ -142,6 +172,28 @@ export function toCardItem(rec: Recommendation): CardDisplayItem {
     score_label: `★ ${rec.predicted_score.toFixed(1)}`,
     score_color: rec.predicted_score >= 8 ? 'success' : rec.predicted_score >= 7 ? 'warning' : 'error',
     extra_badges: [],
+  }
+}
+
+export function toPersonCardItem(person: PersonTitleResult): CardDisplayItem {
+  return {
+    title: person.title,
+    title_type: person.title_type,
+    year: person.year,
+    genres: person.genres,
+    imdb_rating: person.imdb_rating,
+    actors: [],
+    director: null,
+    language: person.languages[0] ?? null,
+    imdb_id: person.imdb_id,
+    imdb_url: `https://www.imdb.com/title/${person.imdb_id}`,
+    num_votes: person.num_votes ?? 0,
+    display_score: person.predicted_score,
+    display_explanations: [],
+    score_label: `★ ${person.predicted_score.toFixed(1)}`,
+    score_color: person.predicted_score >= 8 ? 'success' : person.predicted_score >= 7 ? 'warning' : 'error',
+    extra_badges: [],
+    roles: person.roles,
   }
 }
 

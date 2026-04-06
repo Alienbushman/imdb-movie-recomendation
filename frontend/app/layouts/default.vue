@@ -10,6 +10,9 @@
         </NuxtLink>
       </v-app-bar-title>
       <template #append>
+        <v-btn data-e2e="nav-person" to="/person" variant="text" prepend-icon="mdi-account-search">
+          By Person
+        </v-btn>
         <v-btn data-e2e="nav-similar" to="/similar" variant="text" prepend-icon="mdi-movie-search">
           Find Similar
         </v-btn>

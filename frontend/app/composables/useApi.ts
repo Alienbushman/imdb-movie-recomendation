@@ -1,4 +1,4 @@
-import type { RecommendationFilters, RecommendationResponse, DismissResponse, DismissedListResponse, PipelineStatus, TitleSearchResult, SimilarResponse } from '../types'
+import type { RecommendationFilters, RecommendationResponse, DismissResponse, DismissedListResponse, PipelineStatus, TitleSearchResult, SimilarResponse, PersonSearchResult, PersonTitlesResponse } from '../types'
 
 export function useApi() {
   const config = useRuntimeConfig()
@@ -82,6 +82,18 @@ export function useApi() {
     return fetchApi<TitleSearchResult[]>('/search', { query: { q: query, limit } })
   }
 
+  function searchPeople(q: string): Promise<PersonSearchResult[]> {
+    if (q.length < 2) return Promise.resolve([])
+    return fetchApi<PersonSearchResult[]>('/people/search', { query: { q } })
+  }
+
+  function getTitlesByPerson(
+    nameId: string,
+    filters: Record<string, unknown> = {},
+  ): Promise<PersonTitlesResponse> {
+    return fetchApi<PersonTitlesResponse>(`/people/${nameId}`, { query: filters })
+  }
+
   function getSimilarTitles(
     imdbId: string,
     filters?: RecommendationFilters,
@@ -104,5 +116,7 @@ export function useApi() {
     getStatus,
     searchTitles,
     getSimilarTitles,
+    searchPeople,
+    getTitlesByPerson,
   }
 }
