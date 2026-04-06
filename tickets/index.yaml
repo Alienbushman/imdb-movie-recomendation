@@ -82,7 +82,7 @@ tickets:
     component: full_stack
     subtask_dir: 006-fast-initial-load
     subtasks:
-      - { id: ST-001, title: "Frontend: Try Fast Path on Mount",    status: open, effort: medium, depends_on: [] }
+      - { id: ST-001, title: "Frontend: Try Fast Path on Mount",    status: done, effort: medium, depends_on: [] }
       - { id: ST-002, title: "Backend: Skip Rescore When DB Fresh", status: open, effort: medium, depends_on: [] }
 
   - id: "007"
@@ -99,14 +99,14 @@ tickets:
 
   - id: "008"
     title: "Client-Side Sorting + UX Polish"
-    status: open
+    status: done
     priority: medium
     component: frontend
     subtask_dir: 008-sorting-and-ux-polish
     subtasks:
-      - { id: ST-001, title: "Client-Side Sort Controls",            status: open, effort: low-medium, depends_on: [] }
-      - { id: ST-002, title: "Scroll-to-Top FAB",                    status: open, effort: low,        depends_on: [] }
-      - { id: ST-003, title: "Grid Density Toggle + Result Count",   status: open, effort: low,        depends_on: [] }
+      - { id: ST-001, title: "Client-Side Sort Controls",            status: done, effort: low-medium, depends_on: [] }
+      - { id: ST-002, title: "Scroll-to-Top FAB",                    status: done, effort: low,        depends_on: [] }
+      - { id: ST-003, title: "Grid Density Toggle + Result Count",   status: done, effort: low,        depends_on: [] }
 
   - id: "009"
     title: "Find Similar Movies"
