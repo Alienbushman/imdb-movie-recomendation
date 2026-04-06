@@ -8,7 +8,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   dismissed: [imdbId: string]
   excludeGenre: [genre: string]
-  excludeLanguage: [language: string]
+  includeLanguage: [language: string]
 }>()
 
 const api = useApi()
@@ -116,17 +116,16 @@ async function handleDismiss() {
         <v-chip v-if="extraGenres > 0" size="x-small" variant="text" class="mr-1 mb-1 text-medium-emphasis">
           +{{ extraGenres }}
         </v-chip>
-        <v-tooltip v-if="item.language" :text="`Exclude ${item.language}`" location="top">
+        <v-tooltip v-if="item.language" :text="`Filter to ${item.language}`" location="top">
           <template #activator="{ props: tp }">
             <v-chip
               v-bind="tp"
               size="x-small"
               variant="tonal"
               color="info"
-              class="mr-1 mb-1 chip-exclude"
+              class="mr-1 mb-1"
               prepend-icon="mdi-translate"
-              append-icon="mdi-close-circle-outline"
-              @click.stop="emit('excludeLanguage', item.language!)"
+              @click.stop="emit('includeLanguage', item.language!)"
             >
               {{ item.language }}
             </v-chip>

@@ -15,7 +15,7 @@ const emit = defineEmits<{
   generate: []
   dismissed: [imdbId: string]
   excludeGenre: [genre: string]
-  excludeLanguage: [language: string]
+  includeLanguage: [language: string]
 }>()
 </script>
 
@@ -54,7 +54,7 @@ const emit = defineEmits<{
       :item="rec"
       @dismissed="emit('dismissed', $event)"
       @exclude-genre="emit('excludeGenre', $event)"
-      @exclude-language="emit('excludeLanguage', $event)"
+      @include-language="emit('includeLanguage', $event)"
     />
     <v-alert
       v-if="hasData && !items.length && !loading"

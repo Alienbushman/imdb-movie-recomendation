@@ -1,0 +1,28 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8562:8080"
+    volumes:
+      # Mount data/ so datasets, cache, and the trained model persist across
+      # container restarts and rebuilds without being baked into the image.
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "9137:3000"
+    environment:
+      - API_BACKEND=http://api:8080
+    depends_on:
+      - api
+    restart: unless-stopped

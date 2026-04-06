@@ -26,8 +26,8 @@ function handleExcludeGenre(genre: string) {
   recommendations.applyFilters()
 }
 
-function handleExcludeLanguage(language: string) {
-  filters.addExcludedLanguage(language)
+function handleIncludeLanguage(language: string) {
+  filters.addSelectedLanguage(language)
   recommendations.applyFilters()
 }
 
@@ -130,7 +130,7 @@ onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
         @generate="recommendations.generate(false)"
         @dismissed="recommendations.handleDismissed"
         @exclude-genre="handleExcludeGenre"
-        @exclude-language="handleExcludeLanguage"
+        @include-language="handleIncludeLanguage"
       />
 
       <!-- Scroll-to-top FAB -->

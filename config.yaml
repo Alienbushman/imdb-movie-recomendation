@@ -1,0 +1,76 @@
+imdb_datasets:
+  # IMDB bulk dataset files (downloaded to data/datasets/)
+  title_basics: "data/datasets/title.basics.tsv.gz"
+  title_ratings: "data/datasets/title.ratings.tsv.gz"
+  title_principals: "data/datasets/title.principals.tsv.gz"
+  title_akas: "data/datasets/title.akas.tsv.gz"
+  name_basics: "data/datasets/name.basics.tsv.gz"
+  title_crew: "data/datasets/title.crew.tsv.gz"
+  anime_list: "data/datasets/anime-list-mini.json"
+  anime_list_url: "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json"
+  # Minimum vote count to consider a title (filters out obscure titles)
+  min_vote_count: 100
+  # Minimum IMDB rating to consider
+  min_rating: 5.0
+  # Earliest release year to include (0 = no filter)
+  min_year: 1970
+  # Title types to include from IMDB datasets
+  include_title_types: ["movie", "tvSeries", "tvMiniSeries", "tvMovie"]
+
+features:
+  # Popularity tier thresholds (num_votes boundaries)
+  popularity_tiers: [25000, 100000, 500000]
+  # Top languages for one-hot encoding
+  top_languages:
+    - English
+    - French
+    - German
+    - Japanese
+    - Korean
+    - Spanish
+    - Italian
+    - Hindi
+    - Chinese
+    - Portuguese
+    - Swedish
+    - Danish
+    - Turkish
+    - Russian
+  # Maximum number of genre interaction pairs to use
+  max_genre_pairs: 15
+
+model:
+  # LightGBM hyperparameters
+  n_estimators: 200
+  learning_rate: 0.05
+  max_depth: 6
+  num_leaves: 31
+  min_child_samples: 5
+  # Train/test split ratio
+  test_size: 0.2
+  random_state: 42
+
+recommendations:
+  # How many recommendations to return per category
+  top_n_movies: 20
+  top_n_series: 10
+  top_n_anime: 10
+  # Minimum predicted score to include
+  min_predicted_score: 6.5
+
+categories:
+  movie:
+    title_types: ["movie", "tvMovie"]
+    label: "Movies"
+  series:
+    title_types: ["tvSeries", "tvMiniSeries"]
+    label: "Series"
+  anime:
+    title_types: ["movie", "tvSeries", "tvMiniSeries"]
+    label: "Anime"
+
+data:
+  # Path to IMDB export CSV relative to project root
+  watchlist_path: "data/watchlist.csv"
+  # Where to cache processed candidate data
+  cache_dir: "data/cache"
