@@ -58,6 +58,27 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_anime "
         "ON scored_candidates(is_anime, predicted_score DESC)"
     )
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS people (
+            name_id TEXT PRIMARY KEY,
+            name    TEXT NOT NULL,
+            primary_profession TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS title_people (
+            imdb_id TEXT NOT NULL,
+            name_id TEXT NOT NULL,
+            role    TEXT NOT NULL,
+            PRIMARY KEY (imdb_id, name_id, role)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_title_people_name_id ON title_people (name_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_title_people_imdb_id ON title_people (imdb_id)"
+    )
     conn.commit()
 
 
@@ -371,3 +392,60 @@ def query_candidates(
         results.append((candidate, row["predicted_score"]))
 
     return results[:top_n]
+
+
+def write_people(
+    people: list[dict],
+    title_people: list[dict],
+) -> None:
+    """Persist person and title-person rows to the scored DB.
+
+    Replaces existing rows (INSERT OR REPLACE) so re-running the pipeline
+    produces a clean slate without requiring a manual DB delete.
+    """
+    conn = _connect()
+    try:
+        _ensure_schema(conn)
+        conn.executemany(
+            "INSERT OR REPLACE INTO people (name_id, name, primary_profession) VALUES (?,?,?)",
+            [(p["name_id"], p["name"], p.get("primary_profession")) for p in people],
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO title_people (imdb_id, name_id, role) VALUES (?,?,?)",
+            [(tp["imdb_id"], tp["name_id"], tp["role"]) for tp in title_people],
+        )
+        conn.commit()
+        logger.info(
+            "Saved %d people and %d title-person rows", len(people), len(title_people)
+        )
+    finally:
+        conn.close()
+
+
+def search_people(query: str, limit: int = 20) -> list[dict]:
+    """Search people by name substring (case-insensitive).
+
+    Returns dicts with keys: name_id, name, primary_profession, title_count.
+    Only returns people who have at least one row in title_people.
+    """
+    db = _db_path()
+    if not db.exists():
+        return []
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT p.name_id, p.name, p.primary_profession, "
+            "COUNT(DISTINCT tp.imdb_id) AS title_count "
+            "FROM people p "
+            "JOIN title_people tp ON tp.name_id = p.name_id "
+            "WHERE p.name LIKE ? COLLATE NOCASE "
+            "GROUP BY p.name_id "
+            "ORDER BY title_count DESC "
+            "LIMIT ?",
+            (f"%{query}%", limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()

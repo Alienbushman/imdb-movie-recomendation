@@ -146,9 +146,30 @@ def run_pipeline(
         )
 
         # Persist all scored candidates to SQLite for subsequent GET requests
-        from app.services.scored_store import save_scored
+        from app.services.scored_store import save_scored, write_people
 
-        save_scored([(c, s) for c, _, s in scored])
+        scored_candidates = [(c, s) for c, _, s in scored]
+        save_scored(scored_candidates)
+
+        # Populate people and title_people tables for the person browse feature
+        people_map: dict[str, dict] = {}
+        title_people_rows: list[dict] = []
+        for candidate, _score in scored_candidates:
+            for role, names in [
+                ("director", candidate.directors),
+                ("actor", candidate.actors),
+                ("writer", candidate.writers),
+                ("composer", candidate.composers),
+                ("cinematographer", candidate.cinematographers),
+            ]:
+                for name in names:
+                    name_id = name.lower()
+                    if name_id not in people_map:
+                        people_map[name_id] = {"name_id": name_id, "name": name}
+                    title_people_rows.append(
+                        {"imdb_id": candidate.imdb_id, "name_id": name_id, "role": role}
+                    )
+        write_people(list(people_map.values()), title_people_rows)
 
         # Cache lightweight state only — large collections are in scored_candidates.db
         _state.update(

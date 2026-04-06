@@ -148,6 +148,17 @@ class TitleSearchResult(BaseModel):
     )
 
 
+class PersonSearchResult(BaseModel):
+    """Lightweight person info for search autocomplete."""
+
+    name_id: str
+    name: str
+    primary_profession: str | None = None
+    title_count: int = Field(
+        description="Number of scored titles featuring this person."
+    )
+
+
 class SimilarTitle(BaseModel):
     """A title similar to the seed, with similarity details."""
 

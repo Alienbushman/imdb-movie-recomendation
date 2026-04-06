@@ -1,7 +1,6 @@
 import logging
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
 
 from app.core.config import PROJECT_ROOT, get_settings
@@ -9,6 +8,7 @@ from app.models.schemas import (
     DatasetDownloadResponse,
     DismissedListResponse,
     DismissResponse,
+    PersonSearchResult,
     PipelineStatus,
     Recommendation,
     RecommendationFilters,
@@ -28,7 +28,7 @@ from app.services.pipeline import (
     get_recommendations_from_db,
     run_pipeline,
 )
-from app.services.scored_store import has_scored_results, search_titles
+from app.services.scored_store import has_scored_results, search_people, search_titles
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,28 @@ def get_status():
     `last_run` is `null` if the pipeline has not been run since the server started.
     """
     return get_pipeline_status()
+
+
+# ---------------------------------------------------------------------------
+# Person Browse — Search
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/people/search",
+    response_model=list[PersonSearchResult],
+    summary="Search for a director or actor by name",
+    tags=["Person Browse"],
+)
+def search_people_endpoint(
+    q: str = Query(..., min_length=2, description="Name search query (min 2 characters)"),
+    limit: int = Query(20, ge=1, le=50),
+):
+    """Return people (directors/actors/writers) whose name contains the query string."""
+    if not has_scored_results():
+        return []
+    rows = search_people(q, limit)
+    return [PersonSearchResult(**r) for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -359,17 +381,12 @@ def generate_recommendations(
     except RuntimeError as e:
         logger.error("POST /recommendations — IMDB fetch error: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
-    except httpx.TimeoutException:
-        logger.error("POST /recommendations — IMDB fetch timed out")
-        raise HTTPException(
-            status_code=504,
-            detail="Timed out fetching ratings from IMDB. Try again or use CSV upload.",
-        )
-    except httpx.ConnectError:
-        logger.error("POST /recommendations — IMDB connection error")
+    except Exception as e:
+        # Catch Playwright timeout / connection errors and any other unexpected errors
+        logger.error("POST /recommendations — unexpected error: %s", e)
         raise HTTPException(
             status_code=502,
-            detail="Could not connect to IMDB. Check your network connection.",
+            detail=f"Failed to fetch ratings: {e}",
         )
 
 
