@@ -117,7 +117,7 @@ tickets:
     subtasks:
       - { id: ST-001, title: "Backend: Title Search Endpoint",              status: done, effort: low,    depends_on: [] }
       - { id: ST-002, title: "Backend: Similarity Engine + API Endpoint",   status: done, effort: medium, depends_on: [ST-001] }
-      - { id: ST-003, title: "Frontend: Similar Page with Search + Routing", status: open, effort: medium, depends_on: [ST-001] }
+      - { id: ST-003, title: "Frontend: Similar Page with Search + Routing", status: done, effort: medium, depends_on: [ST-001] }
       - { id: ST-004, title: "Frontend: Results Display + Seen/Unseen Filter", status: open, effort: medium, depends_on: [ST-002, ST-003] }
 
   - id: "010"
@@ -127,7 +127,7 @@ tickets:
     component: frontend
     subtask_dir: 010-frontend-modularization
     subtasks:
-      - { id: ST-001, title: "Extract ActionsBar Component",         status: open, effort: low,        depends_on: [] }
+      - { id: ST-001, title: "Extract ActionsBar Component",         status: done, effort: low,        depends_on: [] }
       - { id: ST-002, title: "Extract ActiveFilterSummary Component", status: open, effort: low,       depends_on: [ST-001] }
       - { id: ST-003, title: "Extract CategoryTabs Component",       status: open, effort: low,        depends_on: [ST-002] }
       - { id: ST-004, title: "Extract RecommendationGrid Component", status: open, effort: low-medium, depends_on: [ST-003] }
