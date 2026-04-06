@@ -6,10 +6,10 @@ const recommendations = useRecommendationsStore()
 const filters = useFiltersStore()
 const api = useApi()
 
-const imdbUrl = ref<string>('')
-const showDataSource = ref(false)
-
-const gridDense = ref(localStorage.getItem('grid-dense') === 'true')
+const gridDense = ref(false)
+onMounted(() => {
+  gridDense.value = localStorage.getItem('grid-dense') === 'true'
+})
 watch(gridDense, (v) => localStorage.setItem('grid-dense', String(v)))
 
 const sortOptions = [
@@ -41,9 +41,7 @@ function removeExcludedLanguageAndApply(language: string) {
   recommendations.applyFilters()
 }
 
-async function handleCsvUpload(files: File | File[] | null) {
-  const file = Array.isArray(files) ? files[0] : files
-  if (!file) return
+async function handleCsvUpload(file: File) {
   try {
     await api.uploadWatchlist(file)
     await recommendations.generate()
@@ -78,73 +76,13 @@ onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
 
     <!-- Main content area -->
     <div ref="contentArea" class="flex-grow-1 pa-4 overflow-auto">
-      <!-- Actions bar -->
-      <div data-e2e="actions-bar" class="d-flex align-center ga-3 mb-4 flex-wrap">
-        <v-btn
-          data-e2e="btn-generate"
-          color="primary"
-          prepend-icon="mdi-play"
-          :loading="recommendations.loading"
-          @click="recommendations.generate(false, imdbUrl || undefined)"
-        >
-          Generate
-        </v-btn>
-        <v-btn
-          data-e2e="btn-retrain"
-          variant="outlined"
-          prepend-icon="mdi-refresh"
-          :loading="recommendations.loading"
-          @click="recommendations.generate(true, imdbUrl || undefined)"
-        >
-          Retrain Model
-        </v-btn>
-        <v-btn
-          variant="text"
-          size="small"
-          :prepend-icon="showDataSource ? 'mdi-chevron-up' : 'mdi-database-import-outline'"
-          @click="showDataSource = !showDataSource"
-        >
-          Data Source
-        </v-btn>
-        <v-spacer />
-        <v-chip v-if="recommendations.lastOperation" data-e2e="chip-last-operation" :color="recommendations.lastOperation === 'filter' ? 'success' : 'info'" variant="tonal" size="small">
-          {{ recommendations.lastOperation === 'filter' ? '⚡ from cache' : '🔄 full run' }}
-        </v-chip>
-        <v-chip v-if="recommendations.data?.model_accuracy" data-e2e="chip-model-accuracy" variant="outlined" size="small">
-          MAE: {{ recommendations.data.model_accuracy }}
-        </v-chip>
-      </div>
-
-      <!-- Collapsible data source inputs -->
-      <v-expand-transition>
-        <div v-if="showDataSource" class="mb-4">
-          <v-card variant="outlined" class="pa-4">
-            <v-text-field
-              v-model="imdbUrl"
-              label="IMDB Ratings URL"
-              placeholder="https://www.imdb.com/user/ur.../ratings/"
-              hint="Your IMDB ratings must be set to public"
-              persistent-hint
-              persistent-placeholder
-              clearable
-              variant="outlined"
-              prepend-inner-icon="mdi-link"
-              density="compact"
-              class="mb-2"
-            />
-            <v-file-input
-              label="Or upload CSV manually"
-              accept=".csv"
-              hint="Export from IMDB → Your ratings → Export"
-              persistent-hint
-              variant="outlined"
-              prepend-icon="mdi-upload"
-              density="compact"
-              @update:model-value="handleCsvUpload"
-            />
-          </v-card>
-        </div>
-      </v-expand-transition>
+      <ActionsBar
+        :loading="recommendations.loading"
+        :last-operation="recommendations.lastOperation"
+        :model-accuracy="recommendations.data?.model_accuracy ?? null"
+        @generate="(retrain, url) => recommendations.generate(retrain, url)"
+        @csv-uploaded="handleCsvUpload"
+      />
 
       <!-- Active filter summary bar -->
       <div v-if="filters.activeFilterSummary.length || filters.hasActiveExclusions" class="d-flex align-center ga-2 mb-3 flex-wrap">
