@@ -130,7 +130,7 @@ tickets:
       - { id: ST-001, title: "Extract ActionsBar Component",         status: done, effort: low,        depends_on: [] }
       - { id: ST-002, title: "Extract ActiveFilterSummary Component", status: done, effort: low,       depends_on: [ST-001] }
       - { id: ST-003, title: "Extract CategoryTabs Component",       status: done, effort: low,        depends_on: [ST-002] }
-      - { id: ST-004, title: "Extract RecommendationGrid Component", status: open, effort: low-medium, depends_on: [ST-003] }
+      - { id: ST-004, title: "Extract RecommendationGrid Component", status: done, effort: low-medium, depends_on: [ST-003] }
       - { id: ST-005, title: "Add Slots to FilterDrawer",            status: open, effort: low,        depends_on: [] }
       - { id: ST-006, title: "Define CardDisplayItem Union Type",    status: open, effort: low,        depends_on: [] }
 
