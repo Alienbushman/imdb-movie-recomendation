@@ -5,8 +5,8 @@ Rows are ordered by execution order. Work top-to-bottom unless dependencies allo
 | ID | Title | Priority | Status | Dependencies | Notes |
 |---|---|---|---|---|---|
 | ST-001 | Backend: Startup Readiness Fields in `/status` | Medium | Done | — | |
-| ST-002 | Frontend: Onboarding Wizard for First-Time Users | Medium | Open | ST-001 | |
+| ST-002 | Frontend: Onboarding Wizard for First-Time Users | Medium | Done | ST-001 | |
 
 ## Completion
 
-1 / 2 complete
+2 / 2 complete
