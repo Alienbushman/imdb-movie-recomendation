@@ -545,8 +545,27 @@ def _load_language_data(title_ids: set[str]) -> tuple[dict[str, str], dict[str, 
     akas["_resolved"] = akas["_lang"].fillna(akas["_region_lang"])
     akas = akas.dropna(subset=["_resolved"])
     akas["_is_orig"] = (akas["isOriginalTitle"] == "1").astype(int)
-    akas_sorted = akas.sort_values(["titleId", "_is_orig"], ascending=[True, False])
-    lang_by_title: dict[str, str] = akas_sorted.groupby("titleId")["_resolved"].first().to_dict()
+
+    # Primary: most common resolved language among isOriginalTitle=1 rows
+    lang_by_title: dict[str, str] = (
+        akas[akas["_is_orig"] == 1]
+        .dropna(subset=["_resolved"])
+        .groupby("titleId")["_resolved"]
+        .agg(lambda s: s.mode().iloc[0])
+        .to_dict()
+    )
+
+    # Fallback: for titles with no original-title match, use mode across all rows
+    no_orig = title_ids - lang_by_title.keys()
+    if no_orig:
+        fallback = (
+            akas[akas["titleId"].isin(no_orig)]
+            .dropna(subset=["_resolved"])
+            .groupby("titleId")["_resolved"]
+            .agg(lambda s: s.mode().iloc[0])
+            .to_dict()
+        )
+        lang_by_title.update(fallback)
 
     logger.info(
         "Resolved language for %d / %d titles, country for %d titles in %.2fs",
