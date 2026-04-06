@@ -353,6 +353,22 @@ class PipelineStatus(BaseModel):
         description="ISO 8601 UTC timestamp of the most recent pipeline run.",
         examples=["2026-04-05T14:23:00+00:00"],
     )
+    datasets_ready: bool = Field(
+        default=False,
+        description="Whether all required IMDB dataset files are present on disk.",
+    )
+    datasets_downloading: bool = Field(
+        default=False,
+        description="Whether dataset files are currently being downloaded in the background.",
+    )
+    watchlist_ready: bool = Field(
+        default=False,
+        description="Whether data/watchlist.csv exists and is non-empty.",
+    )
+    scored_db_ready: bool = Field(
+        default=False,
+        description="Whether the scored candidates database has rows (fast-path available).",
+    )
 
 
 class DatasetDownloadResponse(BaseModel):

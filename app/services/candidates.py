@@ -178,6 +178,20 @@ _CHUNK_SIZE = 500_000
 # Categories we need from title.principals (directors moved to title.crew)
 _PRINCIPAL_CATEGORIES = frozenset(["actor", "actress", "composer", "cinematographer"])
 
+# Module-level download state
+_datasets_downloading: bool = False
+
+
+def is_datasets_downloading() -> bool:
+    """Return True if IMDB datasets are currently being downloaded."""
+    return _datasets_downloading
+
+
+def datasets_ready() -> bool:
+    """Return True if all required IMDB dataset files exist on disk."""
+    dest = _dataset_dir()
+    return all((dest / filename).exists() for filename in DATASET_URLS)
+
 
 def _dataset_dir() -> Path:
     return PROJECT_ROOT / "data" / "datasets"
@@ -211,35 +225,40 @@ def _load_anime_ids() -> set[str]:
 
 def download_datasets() -> None:
     """Download IMDB dataset files if they don't already exist."""
-    dest = _dataset_dir()
-    dest.mkdir(parents=True, exist_ok=True)
-    logger.info("Dataset directory: %s", dest)
+    global _datasets_downloading
+    _datasets_downloading = True
+    try:
+        dest = _dataset_dir()
+        dest.mkdir(parents=True, exist_ok=True)
+        logger.info("Dataset directory: %s", dest)
 
-    for filename, url in DATASET_URLS.items():
-        filepath = dest / filename
-        if filepath.exists():
+        for filename, url in DATASET_URLS.items():
+            filepath = dest / filename
+            if filepath.exists():
+                size_mb = filepath.stat().st_size / 1e6
+                logger.info("Dataset already exists: %s (%.1f MB)", filepath, size_mb)
+                continue
+
+            logger.info("Downloading %s ...", url)
+            t0 = time.perf_counter()
+            subprocess.run(
+                ["curl", "-L", "-o", str(filepath), url],
+                check=True,
+            )
+            elapsed = time.perf_counter() - t0
             size_mb = filepath.stat().st_size / 1e6
-            logger.info("Dataset already exists: %s (%.1f MB)", filepath, size_mb)
-            continue
+            speed = size_mb / elapsed if elapsed > 0 else 0
+            logger.info(
+                "Downloaded %s (%.1f MB) in %.1fs (%.1f MB/s)",
+                filename,
+                size_mb,
+                elapsed,
+                speed,
+            )
 
-        logger.info("Downloading %s ...", url)
-        t0 = time.perf_counter()
-        subprocess.run(
-            ["curl", "-L", "-o", str(filepath), url],
-            check=True,
-        )
-        elapsed = time.perf_counter() - t0
-        size_mb = filepath.stat().st_size / 1e6
-        speed = size_mb / elapsed if elapsed > 0 else 0
-        logger.info(
-            "Downloaded %s (%.1f MB) in %.1fs (%.1f MB/s)",
-            filename,
-            size_mb,
-            elapsed,
-            speed,
-        )
-
-    _download_anime_list()
+        _download_anime_list()
+    finally:
+        _datasets_downloading = False
 
 
 def _cache_path() -> Path:

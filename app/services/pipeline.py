@@ -332,11 +332,20 @@ def ensure_datasets() -> str:
 
 def get_pipeline_status() -> PipelineStatus:
     """Return current pipeline state."""
-    from app.services.scored_store import get_scored_count
+    from app.services.candidates import datasets_ready as _datasets_ready
+    from app.services.candidates import is_datasets_downloading
+    from app.services.scored_store import get_scored_count, has_scored_results
+
+    settings = get_settings()
+    watchlist_path = PROJECT_ROOT / settings.data.watchlist_path
 
     return PipelineStatus(
         rated_titles_count=len(_state["titles"]) if _state["titles"] else 0,
         candidates_count=get_scored_count(),
         model_trained=_state["model"] is not None,
         last_run=_state["last_run"],
+        datasets_ready=_datasets_ready(),
+        datasets_downloading=is_datasets_downloading(),
+        watchlist_ready=watchlist_path.exists() and watchlist_path.stat().st_size > 0,
+        scored_db_ready=has_scored_results(),
     )
