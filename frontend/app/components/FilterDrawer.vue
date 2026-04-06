@@ -427,6 +427,8 @@ const openPanels = ref(['genres', 'quality'])
         </v-expansion-panel-text>
       </v-expansion-panel>
 
+      <!-- Extension point for page-specific filter panels -->
+      <slot name="extra-panels" />
     </v-expansion-panels>
   </v-navigation-drawer>
 </template>
