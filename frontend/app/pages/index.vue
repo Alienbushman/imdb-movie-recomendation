@@ -110,15 +110,6 @@ onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
         </v-btn-toggle>
       </div>
 
-      <!-- Loading indicator during re-filter -->
-      <v-progress-linear
-        v-if="recommendations.loading"
-        indeterminate
-        color="primary"
-        class="mb-3"
-        height="2"
-      />
-
       <!-- Error -->
       <v-alert v-if="recommendations.error" data-e2e="alert-error" type="error" closable class="mb-4" @click:close="recommendations.clearError()">
         {{ recommendations.error }}
@@ -131,43 +122,16 @@ onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
         :anime-count="recommendations.data?.anime.length ?? 0"
       />
 
-      <!-- Empty state -->
-      <div v-if="!recommendations.data && !recommendations.loading" data-e2e="empty-state" class="text-center py-16">
-        <v-icon size="80" color="primary" class="mb-6 opacity-50">mdi-movie-search</v-icon>
-        <h2 class="text-h5 font-weight-bold mb-2">Discover Your Next Favorite</h2>
-        <p class="text-body-1 text-medium-emphasis mb-6">
-          Generate personalized recommendations based on your IMDB ratings
-        </p>
-        <v-btn color="primary" size="large" prepend-icon="mdi-play" @click="recommendations.generate(false)">
-          Get Started
-        </v-btn>
-      </div>
-
-      <!-- Loading skeletons -->
-      <div v-else-if="recommendations.loading && !recommendations.data" data-e2e="loading-skeletons" class="card-grid">
-        <v-skeleton-loader v-for="i in 8" :key="i" type="card" />
-      </div>
-
-      <!-- Recommendation grid -->
-      <div v-else data-e2e="recommendations-grid" class="card-grid" :class="{ 'card-grid--dense': gridDense }">
-        <RecommendationCard
-          v-for="rec in recommendations.currentList"
-          :key="rec.imdb_id ?? rec.title"
-          :recommendation="rec"
-          @dismissed="recommendations.handleDismissed"
-          @exclude-genre="handleExcludeGenre"
-          @exclude-language="handleExcludeLanguage"
-        />
-        <v-alert
-          v-if="recommendations.data && !recommendations.currentList.length && !recommendations.loading"
-          data-e2e="alert-no-results"
-          type="info"
-          variant="tonal"
-          style="grid-column: 1 / -1"
-        >
-          No recommendations in this category. Try adjusting your filters.
-        </v-alert>
-      </div>
+      <RecommendationGrid
+        :items="recommendations.currentList"
+        :loading="recommendations.loading"
+        :has-data="!!recommendations.data"
+        :grid-dense="gridDense"
+        @generate="recommendations.generate(false)"
+        @dismissed="recommendations.handleDismissed"
+        @exclude-genre="handleExcludeGenre"
+        @exclude-language="handleExcludeLanguage"
+      />
 
       <!-- Scroll-to-top FAB -->
       <v-btn
@@ -182,15 +146,3 @@ onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
     </div>
   </div>
 </template>
-
-<style scoped>
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 16px;
-}
-
-.card-grid--dense {
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-}
-</style>
