@@ -93,7 +93,7 @@ tickets:
     subtask_dir: 007-improve-language-data
     subtasks:
       - { id: ST-001, title: "Block Ambiguous Region Fallback",     status: done, effort: low,    depends_on: [] }
-      - { id: ST-002, title: "Use Mode Aggregation for Language",   status: open, effort: low,    depends_on: [ST-001] }
+      - { id: ST-002, title: "Use Mode Aggregation for Language",   status: done, effort: low,    depends_on: [ST-001] }
       - { id: ST-003, title: "Log Language Null Coverage",           status: done, effort: low,    depends_on: [] }
       - { id: ST-004, title: "Add languages List Field",            status: open, effort: medium, depends_on: [ST-001, ST-002] }
 
@@ -119,3 +119,17 @@ tickets:
       - { id: ST-002, title: "Backend: Similarity Engine + API Endpoint",   status: open, effort: medium, depends_on: [ST-001] }
       - { id: ST-003, title: "Frontend: Similar Page with Search + Routing", status: open, effort: medium, depends_on: [ST-001] }
       - { id: ST-004, title: "Frontend: Results Display + Seen/Unseen Filter", status: open, effort: medium, depends_on: [ST-002, ST-003] }
+
+  - id: "010"
+    title: "Frontend Component Modularization"
+    status: open
+    priority: medium
+    component: frontend
+    subtask_dir: 010-frontend-modularization
+    subtasks:
+      - { id: ST-001, title: "Extract ActionsBar Component",         status: open, effort: low,        depends_on: [] }
+      - { id: ST-002, title: "Extract ActiveFilterSummary Component", status: open, effort: low,       depends_on: [ST-001] }
+      - { id: ST-003, title: "Extract CategoryTabs Component",       status: open, effort: low,        depends_on: [ST-002] }
+      - { id: ST-004, title: "Extract RecommendationGrid Component", status: open, effort: low-medium, depends_on: [ST-003] }
+      - { id: ST-005, title: "Add Slots to FilterDrawer",            status: open, effort: low,        depends_on: [] }
+      - { id: ST-006, title: "Define CardDisplayItem Union Type",    status: open, effort: low,        depends_on: [] }
