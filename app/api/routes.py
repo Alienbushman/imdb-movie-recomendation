@@ -13,6 +13,7 @@ from app.models.schemas import (
     Recommendation,
     RecommendationFilters,
     RecommendationResponse,
+    TitleSearchResult,
 )
 from app.services.dismissed import (
     dismiss_title,
@@ -26,7 +27,7 @@ from app.services.pipeline import (
     get_recommendations_from_db,
     run_pipeline,
 )
-from app.services.scored_store import has_scored_results
+from app.services.scored_store import has_scored_results, search_titles
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,61 @@ def get_status():
     `last_run` is `null` if the pipeline has not been run since the server started.
     """
     return get_pipeline_status()
+
+
+# ---------------------------------------------------------------------------
+# Similar — Title Search
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/search",
+    response_model=list[TitleSearchResult],
+    summary="Search titles by name",
+    tags=["Similar"],
+)
+def search_titles_endpoint(
+    q: str = Query(..., min_length=2, description="Search query (minimum 2 characters)"),
+    limit: int = Query(20, ge=1, le=50, description="Max results to return"),
+):
+    """Search for titles by name substring. Returns lightweight results for autocomplete.
+
+    Searches both the scored candidates database and the user's rated watchlist.
+    Rated titles are marked with `is_rated=True` and sorted first.
+    """
+    from app.services.pipeline import _state
+
+    # 1. Search scored candidates DB
+    db_hits = search_titles(q, limit)
+    results_by_id: dict[str, TitleSearchResult] = {}
+    for row in db_hits:
+        results_by_id[row["imdb_id"]] = TitleSearchResult(
+            imdb_id=row["imdb_id"],
+            title=row["title"],
+            year=row["year"],
+            title_type=row["title_type"],
+            is_rated=False,
+        )
+
+    # 2. Search rated titles (if pipeline has been run)
+    rated_titles = _state.get("titles") or []
+    q_lower = q.lower()
+    for rt in rated_titles:
+        if q_lower in rt.title.lower():
+            results_by_id[rt.imdb_id] = TitleSearchResult(
+                imdb_id=rt.imdb_id,
+                title=rt.title,
+                year=rt.year,
+                title_type=rt.title_type,
+                is_rated=True,
+            )
+
+    # 3. Sort: rated first, then by title length (shorter = more relevant)
+    results = sorted(
+        results_by_id.values(),
+        key=lambda r: (not r.is_rated, len(r.title)),
+    )
+    return results[:limit]
 
 
 # ---------------------------------------------------------------------------

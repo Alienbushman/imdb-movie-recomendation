@@ -144,6 +144,30 @@ def get_scored_count() -> int:
         return 0
 
 
+def search_titles(query: str, limit: int = 20) -> list[dict]:
+    """Search scored_candidates by title substring (case-insensitive).
+
+    Returns dicts with keys: imdb_id, title, year, title_type.
+    """
+    db = _db_path()
+    if not db.exists():
+        return []
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT imdb_id, title, year, title_type FROM scored_candidates "
+            "WHERE title LIKE ? COLLATE NOCASE "
+            "ORDER BY num_votes DESC "
+            "LIMIT ?",
+            (f"%{query}%", limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
 def query_candidates(
     filters: RecommendationFilters | None,
     title_types: list[str] | None,

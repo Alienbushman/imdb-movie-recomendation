@@ -135,6 +135,19 @@ class FeatureVector(BaseModel):
     imdb_metacritic_gap: float = 0.0
 
 
+class TitleSearchResult(BaseModel):
+    """Lightweight title info for search autocomplete."""
+
+    imdb_id: str
+    title: str
+    year: int | None = None
+    title_type: str
+    is_rated: bool = Field(
+        default=False,
+        description="True if this title is in the user's rated watchlist.",
+    )
+
+
 class Recommendation(BaseModel):
     """A single title recommendation with score and explanation."""
 
