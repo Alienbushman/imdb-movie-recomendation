@@ -141,7 +141,7 @@ tickets:
     component: full_stack
     subtask_dir: 011-browse-by-person
     subtasks:
-      - { id: ST-001, title: "Backend: Person Search + DB Schema Extension", status: open, effort: medium, depends_on: [] }
+      - { id: ST-001, title: "Backend: Person Search + DB Schema Extension", status: done, effort: medium, depends_on: [] }
       - { id: ST-002, title: "Backend: Titles by Person Endpoint",           status: open, effort: medium, depends_on: [ST-001] }
       - { id: ST-003, title: "Frontend: Person Browse Page with Search",     status: open, effort: medium, depends_on: [ST-001] }
       - { id: ST-004, title: "Frontend: Results Display + Role Filter",      status: open, effort: medium, depends_on: [ST-002, ST-003] }
