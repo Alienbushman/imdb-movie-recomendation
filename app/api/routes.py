@@ -13,6 +13,7 @@ from app.models.schemas import (
     Recommendation,
     RecommendationFilters,
     RecommendationResponse,
+    SimilarResponse,
     TitleSearchResult,
 )
 from app.services.dismissed import (
@@ -233,6 +234,49 @@ def _parse_filters(
 
 
 FilterDeps = Annotated[RecommendationFilters | None, Depends(_parse_filters)]
+
+
+# ---------------------------------------------------------------------------
+# Similar — Find Similar Titles
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/similar/{imdb_id}",
+    response_model=SimilarResponse,
+    summary="Find titles similar to a given title",
+    tags=["Similar"],
+    responses={
+        200: {"description": "Similar titles found."},
+        404: {"description": "Seed title not found."},
+        409: {"description": "Pipeline has not been run yet — no scored data."},
+    },
+)
+def get_similar_titles(
+    imdb_id: str = Path(description="IMDB ID of the seed title", pattern=r"^tt\d+$"),
+    filters: FilterDeps = None,
+    top_n: int = Query(50, ge=1, le=200, description="Max similar titles to return"),
+    seen: bool | None = Query(
+        None,
+        description="Filter by seen status: true=only rated, false=only unrated, null=all",
+    ),
+):
+    """Find titles most similar to a given seed title.
+
+    Similarity is computed using genre overlap, shared directors/actors,
+    language match, era proximity, and IMDB rating proximity. Results include
+    a similarity score (0-1) and human-readable explanations.
+
+    Use the `seen` parameter to filter by whether the user has rated the title.
+    """
+    from app.services.similar import find_similar
+
+    try:
+        return find_similar(imdb_id, filters, top_n, seen)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------

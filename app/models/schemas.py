@@ -148,6 +148,43 @@ class TitleSearchResult(BaseModel):
     )
 
 
+class SimilarTitle(BaseModel):
+    """A title similar to the seed, with similarity details."""
+
+    title: str
+    title_type: str
+    year: int | None = None
+    genres: list[str] = []
+    imdb_rating: float | None = None
+    predicted_score: float | None = None
+    similarity_score: float = Field(
+        description="Content-based similarity score in [0.0, 1.0].",
+    )
+    similarity_explanation: list[str] = Field(
+        default=[],
+        description="Human-readable reasons why this title is similar to the seed.",
+    )
+    actors: list[str] = []
+    director: str | None = None
+    language: str | None = None
+    imdb_id: str | None = None
+    imdb_url: str | None = None
+    num_votes: int = 0
+    country_code: str | None = None
+    is_rated: bool = False
+
+
+class SimilarResponse(BaseModel):
+    """Response from the find-similar endpoint."""
+
+    seed_title: str
+    seed_imdb_id: str
+    results: list[SimilarTitle]
+    total_candidates: int = Field(
+        description="How many candidates were considered before top-N.",
+    )
+
+
 class Recommendation(BaseModel):
     """A single title recommendation with score and explanation."""
 

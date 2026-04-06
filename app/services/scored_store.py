@@ -144,6 +144,98 @@ def get_scored_count() -> int:
         return 0
 
 
+def get_title_by_id(imdb_id: str) -> sqlite3.Row | None:
+    """Look up a single title from the scored DB by IMDB ID."""
+    db = _db_path()
+    if not db.exists():
+        return None
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT * FROM scored_candidates WHERE imdb_id = ?", (imdb_id,)
+        ).fetchone()
+        return row
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+
+
+def query_all_candidates_lightweight(
+    filters: RecommendationFilters | None,
+) -> list[sqlite3.Row]:
+    """Query all scored candidates with optional filters, returning raw rows.
+
+    Unlike query_candidates(), this returns all matching rows without top-N
+    limits or dismissed filtering. Used by the similarity engine which needs
+    the full pool to rank by similarity score.
+    """
+    db = _db_path()
+    if not db.exists():
+        return []
+    conn = _connect()
+    try:
+        params: list = []
+        where: list[str] = []
+
+        if filters:
+            if filters.min_year is not None:
+                where.append("year >= ?")
+                params.append(filters.min_year)
+            if filters.max_year is not None:
+                where.append("year <= ?")
+                params.append(filters.max_year)
+            if filters.languages:
+                incl_ph = ",".join("?" * len(filters.languages))
+                where.append(f"language IN ({incl_ph})")
+                params.extend(filters.languages)
+            if filters.min_imdb_rating is not None:
+                where.append("imdb_rating >= ?")
+                params.append(filters.min_imdb_rating)
+            if filters.max_runtime is not None:
+                where.append("(runtime_mins IS NULL OR runtime_mins <= ?)")
+                params.append(filters.max_runtime)
+            if filters.exclude_languages:
+                excl_ph = ",".join("?" * len(filters.exclude_languages))
+                where.append(f"(language IS NULL OR language NOT IN ({excl_ph}))")
+                params.extend(filters.exclude_languages)
+            if filters.min_vote_count is not None:
+                where.append("num_votes >= ?")
+                params.append(filters.min_vote_count)
+            if filters.country_code is not None:
+                where.append("UPPER(country_code) = UPPER(?)")
+                params.append(filters.country_code)
+
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+        sql = (
+            f"SELECT * FROM scored_candidates {where_clause} "
+            f"ORDER BY num_votes DESC"
+        )
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+    # Apply genre filters in Python (same pattern as query_candidates)
+    if filters and (filters.genres or filters.exclude_genres):
+        filtered = []
+        for row in rows:
+            genres = json.loads(row["genres"])
+            if filters.genres:
+                genre_set = {g.strip() for g in filters.genres}
+                if not genre_set & set(genres):
+                    continue
+            if filters.exclude_genres:
+                excl_set = {g.strip() for g in filters.exclude_genres}
+                if excl_set & set(genres):
+                    continue
+            filtered.append(row)
+        return filtered
+
+    return rows
+
+
 def search_titles(query: str, limit: int = 20) -> list[dict]:
     """Search scored_candidates by title substring (case-insensitive).
 
