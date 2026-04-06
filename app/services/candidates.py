@@ -162,6 +162,15 @@ _REGION_TO_LANG: dict[str, str] = {
     "XWW": "English",
 }
 
+_AMBIGUOUS_REGIONS: frozenset[str] = frozenset({
+    "IN",  # Hindi, Tamil, Telugu, Malayalam, Kannada, ...
+    "BE",  # French and Dutch (Flemish)
+    "CH",  # German, French, Italian
+    "CA",  # English and French
+    "NG",  # Hausa, Yoruba, Igbo, English, ...
+    "ZW",  # Shona, Ndebele, English, ...
+})
+
 # Rows per chunk when streaming large TSV files. 500K rows keeps each chunk
 # under ~100 MB in memory while scanning title.principals (100M+ rows total).
 _CHUNK_SIZE = 500_000
@@ -532,6 +541,7 @@ def _load_language_data(title_ids: set[str]) -> tuple[dict[str, str], dict[str, 
     # Language: prefer explicit language code over region mapping, prefer original rows
     akas["_lang"] = akas["language"].map(_LANG_CODE_TO_NAME)
     akas["_region_lang"] = akas["region"].map(_REGION_TO_LANG)
+    akas.loc[akas["region"].isin(_AMBIGUOUS_REGIONS), "_region_lang"] = None
     akas["_resolved"] = akas["_lang"].fillna(akas["_region_lang"])
     akas = akas.dropna(subset=["_resolved"])
     akas["_is_orig"] = (akas["isOriginalTitle"] == "1").astype(int)
