@@ -92,7 +92,7 @@ tickets:
     component: backend
     subtask_dir: 007-improve-language-data
     subtasks:
-      - { id: ST-001, title: "Block Ambiguous Region Fallback",     status: open, effort: low,    depends_on: [] }
+      - { id: ST-001, title: "Block Ambiguous Region Fallback",     status: done, effort: low,    depends_on: [] }
       - { id: ST-002, title: "Use Mode Aggregation for Language",   status: open, effort: low,    depends_on: [ST-001] }
       - { id: ST-003, title: "Log Language Null Coverage",           status: done, effort: low,    depends_on: [] }
       - { id: ST-004, title: "Add languages List Field",            status: open, effort: medium, depends_on: [ST-001, ST-002] }
