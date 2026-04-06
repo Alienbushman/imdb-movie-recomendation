@@ -124,36 +124,12 @@ onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
         {{ recommendations.error }}
       </v-alert>
 
-      <!-- Tabs -->
-      <v-tabs v-model="recommendations.tab" data-e2e="tabs-categories" class="mb-4">
-        <v-tab data-e2e="tab-movies" value="movies">
-          Movies
-          <v-badge
-            v-if="recommendations.data?.movies.length"
-            :content="recommendations.data.movies.length"
-            color="primary"
-            inline
-          />
-        </v-tab>
-        <v-tab data-e2e="tab-series" value="series">
-          Series
-          <v-badge
-            v-if="recommendations.data?.series.length"
-            :content="recommendations.data.series.length"
-            color="primary"
-            inline
-          />
-        </v-tab>
-        <v-tab data-e2e="tab-anime" value="anime">
-          Anime
-          <v-badge
-            v-if="recommendations.data?.anime.length"
-            :content="recommendations.data.anime.length"
-            color="primary"
-            inline
-          />
-        </v-tab>
-      </v-tabs>
+      <CategoryTabs
+        v-model="recommendations.tab"
+        :movie-count="recommendations.data?.movies.length ?? 0"
+        :series-count="recommendations.data?.series.length ?? 0"
+        :anime-count="recommendations.data?.anime.length ?? 0"
+      />
 
       <!-- Empty state -->
       <div v-if="!recommendations.data && !recommendations.loading" data-e2e="empty-state" class="text-center py-16">
