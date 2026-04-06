@@ -110,3 +110,50 @@ export interface PipelineStatus {
   model_trained: boolean
   last_run: string | null
 }
+
+/** Shared interface for items displayed in RecommendationCard */
+export interface CardDisplayItem {
+  title: string
+  title_type: string
+  year: number | null
+  genres: string[]
+  imdb_rating: number | null
+  actors: string[]
+  director: string | null
+  language: string | null
+  imdb_id: string | null
+  imdb_url: string | null
+  num_votes: number
+  // Display fields — different per source
+  display_score: number        // predicted_score or similarity_score
+  display_explanations: string[] // explanation or similarity_explanation
+  similar_to?: string[]        // only for Recommendation
+  score_label?: string         // e.g. "★ 8.2" or "87% match"
+  score_color?: string         // e.g. "success" or "info"
+  extra_badges?: Array<{ label: string; color: string }>  // e.g. "Seen" chip
+}
+
+export function toCardItem(rec: Recommendation): CardDisplayItem {
+  return {
+    ...rec,
+    display_score: rec.predicted_score,
+    display_explanations: rec.explanation,
+    similar_to: rec.similar_to,
+    score_label: `★ ${rec.predicted_score.toFixed(1)}`,
+    score_color: rec.predicted_score >= 8 ? 'success' : rec.predicted_score >= 7 ? 'warning' : 'error',
+    extra_badges: [],
+  }
+}
+
+export function toSimilarCardItem(sim: SimilarTitle): CardDisplayItem {
+  const score = sim.predicted_score ?? sim.imdb_rating ?? 0
+  const pct = Math.round(sim.similarity_score * 100)
+  return {
+    ...sim,
+    display_score: score,
+    display_explanations: sim.similarity_explanation,
+    score_label: `${pct}% match`,
+    score_color: pct >= 50 ? 'success' : pct >= 30 ? 'warning' : 'default',
+    extra_badges: sim.is_rated ? [{ label: 'Seen', color: 'success' }] : [],
+  }
+}

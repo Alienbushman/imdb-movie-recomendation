@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Recommendation, SimilarTitle } from '../types'
+import type { CardDisplayItem } from '../types'
 
 const props = defineProps<{
-  recommendation: Recommendation | SimilarTitle
+  item: CardDisplayItem
 }>()
 
 const emit = defineEmits<{
@@ -16,72 +16,26 @@ const dismissing = ref(false)
 const showAllExplanations = ref(false)
 const dialogOpen = ref(false)
 
-const isSimilarMode = computed(() => 'similarity_score' in props.recommendation)
-
-const displayScore = computed(() => {
-  if (isSimilarMode.value) {
-    const sim = props.recommendation as SimilarTitle
-    return sim.predicted_score ?? sim.imdb_rating ?? 0
-  }
-  return (props.recommendation as Recommendation).predicted_score
-})
-
-const explanations = computed(() => {
-  if (isSimilarMode.value) {
-    return (props.recommendation as SimilarTitle).similarity_explanation
-  }
-  return (props.recommendation as Recommendation).explanation
-})
-
-const similarTo = computed(() => {
-  if (isSimilarMode.value) return []
-  return (props.recommendation as Recommendation).similar_to
-})
-
-const isRated = computed(() => {
-  if (isSimilarMode.value) {
-    return (props.recommendation as SimilarTitle).is_rated
-  }
-  return false
-})
-
-const similarityPct = computed(() => {
-  if (!isSimilarMode.value) return null
-  return Math.round((props.recommendation as SimilarTitle).similarity_score * 100)
-})
-
-const visibleGenres = computed(() => props.recommendation.genres.slice(0, 4))
-const extraGenres = computed(() => Math.max(0, props.recommendation.genres.length - 4))
+const visibleGenres = computed(() => props.item.genres.slice(0, 4))
+const extraGenres = computed(() => Math.max(0, props.item.genres.length - 4))
 
 const visibleExplanations = computed(() =>
   showAllExplanations.value
-    ? explanations.value
-    : explanations.value.slice(0, 3),
+    ? props.item.display_explanations
+    : props.item.display_explanations.slice(0, 3),
 )
-const extraExplanations = computed(() => Math.max(0, explanations.value.length - 3))
-
-function scoreColor(score: number): string {
-  if (score >= 8) return 'success'
-  if (score >= 7) return 'warning'
-  return 'error'
-}
-
-function matchColor(pct: number): string {
-  if (pct >= 50) return 'success'
-  if (pct >= 30) return 'warning'
-  return 'default'
-}
+const extraExplanations = computed(() => Math.max(0, props.item.display_explanations.length - 3))
 
 async function handleDismiss() {
-  if (!props.recommendation.imdb_id) return
-  console.log('[card] dismiss:', props.recommendation.imdb_id, props.recommendation.title)
+  if (!props.item.imdb_id) return
+  console.log('[card] dismiss:', props.item.imdb_id, props.item.title)
   dismissing.value = true
   try {
-    await api.dismissTitle(props.recommendation.imdb_id)
-    emit('dismissed', props.recommendation.imdb_id)
+    await api.dismissTitle(props.item.imdb_id)
+    emit('dismissed', props.item.imdb_id)
   }
   catch (e) {
-    console.error('[card] dismiss failed:', props.recommendation.imdb_id, e)
+    console.error('[card] dismiss failed:', props.item.imdb_id, e)
   }
   finally {
     dismissing.value = false
@@ -91,7 +45,7 @@ async function handleDismiss() {
 
 <template>
   <v-card
-    :data-e2e="`recommendation-card-${recommendation.imdb_id}`"
+    :data-e2e="`recommendation-card-${item.imdb_id}`"
     elevation="2"
     class="recommendation-card d-flex flex-column h-100"
     @click="dialogOpen = true"
@@ -99,49 +53,46 @@ async function handleDismiss() {
     <v-card-title class="d-flex align-center card-title-row pt-3 pb-1">
       <span class="title-text">
         <a
-          v-if="recommendation.imdb_url"
+          v-if="item.imdb_url"
           data-e2e="card-title"
-          :href="recommendation.imdb_url"
+          :href="item.imdb_url"
           target="_blank"
           rel="noopener"
           class="text-decoration-none text-on-surface"
           @click.stop
         >
-          {{ recommendation.title }}
+          {{ item.title }}
         </a>
-        <span v-else data-e2e="card-title">{{ recommendation.title }}</span>
+        <span v-else data-e2e="card-title">{{ item.title }}</span>
       </span>
       <v-chip
-        v-if="similarityPct != null"
-        :color="matchColor(similarityPct)"
-        size="small"
-        variant="flat"
-        class="ml-2 font-weight-bold flex-shrink-0 score-chip elevation-1"
-      >
-        {{ similarityPct }}% match
-      </v-chip>
-      <v-chip
-        v-else
         data-e2e="card-predicted-score"
-        :color="scoreColor(displayScore)"
+        :color="item.score_color"
         size="small"
         variant="flat"
         class="ml-2 font-weight-bold flex-shrink-0 score-chip elevation-1"
       >
-        <v-icon size="x-small" start>mdi-star</v-icon>
-        {{ displayScore.toFixed(1) }}
+        {{ item.score_label }}
       </v-chip>
     </v-card-title>
 
     <v-card-subtitle class="d-flex align-center ga-1 flex-wrap pb-2">
-      <span v-if="recommendation.year" data-e2e="card-year">{{ recommendation.year }}</span>
-      <v-chip data-e2e="card-title-type" size="x-small" label>{{ recommendation.title_type }}</v-chip>
-      <v-chip v-if="isRated" size="x-small" color="success" variant="flat">Seen</v-chip>
-      <span v-if="recommendation.imdb_rating" data-e2e="card-imdb-rating" class="text-caption">
-        IMDB {{ recommendation.imdb_rating }}
+      <span v-if="item.year" data-e2e="card-year">{{ item.year }}</span>
+      <v-chip data-e2e="card-title-type" size="x-small" label>{{ item.title_type }}</v-chip>
+      <v-chip
+        v-for="badge in item.extra_badges"
+        :key="badge.label"
+        size="x-small"
+        :color="badge.color"
+        variant="flat"
+      >
+        {{ badge.label }}
+      </v-chip>
+      <span v-if="item.imdb_rating" data-e2e="card-imdb-rating" class="text-caption">
+        IMDB {{ item.imdb_rating }}
       </span>
-      <span v-if="recommendation.num_votes" data-e2e="card-num-votes" class="text-caption text-medium-emphasis">
-        ({{ recommendation.num_votes.toLocaleString() }} votes)
+      <span v-if="item.num_votes" data-e2e="card-num-votes" class="text-caption text-medium-emphasis">
+        ({{ item.num_votes.toLocaleString() }} votes)
       </span>
     </v-card-subtitle>
 
@@ -165,7 +116,7 @@ async function handleDismiss() {
         <v-chip v-if="extraGenres > 0" size="x-small" variant="text" class="mr-1 mb-1 text-medium-emphasis">
           +{{ extraGenres }}
         </v-chip>
-        <v-tooltip v-if="recommendation.language" :text="`Exclude ${recommendation.language}`" location="top">
+        <v-tooltip v-if="item.language" :text="`Exclude ${item.language}`" location="top">
           <template #activator="{ props: tp }">
             <v-chip
               v-bind="tp"
@@ -175,28 +126,28 @@ async function handleDismiss() {
               class="mr-1 mb-1 chip-exclude"
               prepend-icon="mdi-translate"
               append-icon="mdi-close-circle-outline"
-              @click.stop="emit('excludeLanguage', recommendation.language!)"
+              @click.stop="emit('excludeLanguage', item.language!)"
             >
-              {{ recommendation.language }}
+              {{ item.language }}
             </v-chip>
           </template>
         </v-tooltip>
       </div>
 
       <!-- Director & Actors -->
-      <div v-if="recommendation.director" data-e2e="card-director" class="text-body-2 mb-1">
+      <div v-if="item.director" data-e2e="card-director" class="text-body-2 mb-1">
         <v-icon size="x-small" class="mr-1">mdi-movie-open</v-icon>
-        {{ recommendation.director }}
+        {{ item.director }}
       </div>
-      <div v-if="recommendation.actors.length" data-e2e="card-actors" class="text-body-2 mb-1">
+      <div v-if="item.actors.length" data-e2e="card-actors" class="text-body-2 mb-1">
         <v-icon size="x-small" class="mr-1">mdi-account-group</v-icon>
-        {{ recommendation.actors.join(', ') }}
+        {{ item.actors.join(', ') }}
       </div>
 
       <!-- Similar titles (recommendation mode only) -->
-      <div v-if="similarTo.length" data-e2e="card-similar-to" class="text-body-2 mb-2 text-medium-emphasis text-truncate">
+      <div v-if="item.similar_to?.length" data-e2e="card-similar-to" class="text-body-2 mb-2 text-medium-emphasis text-truncate">
         <v-icon size="x-small" class="mr-1">mdi-movie-filter</v-icon>
-        Similar to: {{ similarTo.join(', ') }}
+        Similar to: {{ item.similar_to.join(', ') }}
       </div>
 
       <!-- Explanations / similarity reasons — max 3 visible -->
@@ -205,7 +156,7 @@ async function handleDismiss() {
           v-for="(reason, i) in visibleExplanations"
           :key="i"
           :title="reason"
-          :prepend-icon="isSimilarMode ? 'mdi-link-variant' : 'mdi-check-circle-outline'"
+          :prepend-icon="item.score_label?.includes('match') ? 'mdi-link-variant' : 'mdi-check-circle-outline'"
           class="px-0"
         />
       </v-list>
@@ -241,25 +192,14 @@ async function handleDismiss() {
     <v-card class="detail-dialog">
       <!-- Header -->
       <v-card-title class="d-flex align-center pt-4 pb-2">
-        <span class="dialog-title flex-grow-1">{{ recommendation.title }}</span>
+        <span class="dialog-title flex-grow-1">{{ item.title }}</span>
         <v-chip
-          v-if="similarityPct != null"
-          :color="matchColor(similarityPct)"
+          :color="item.score_color"
           size="large"
           variant="flat"
           class="ml-3 font-weight-bold elevation-2"
         >
-          {{ similarityPct }}% match
-        </v-chip>
-        <v-chip
-          v-else
-          :color="scoreColor(displayScore)"
-          size="large"
-          variant="flat"
-          class="ml-3 font-weight-bold elevation-2"
-        >
-          <v-icon size="small" start>mdi-star</v-icon>
-          {{ displayScore.toFixed(1) }}
+          {{ item.score_label }}
         </v-chip>
         <v-btn icon="mdi-close" variant="text" size="small" class="ml-2" @click="dialogOpen = false" />
       </v-card-title>
@@ -269,26 +209,26 @@ async function handleDismiss() {
       <v-card-text class="pt-4">
         <!-- Meta row -->
         <div class="d-flex align-center ga-2 flex-wrap mb-4">
-          <v-chip v-if="recommendation.year" size="small" variant="tonal">{{ recommendation.year }}</v-chip>
-          <v-chip size="small" label variant="tonal" color="primary">{{ recommendation.title_type }}</v-chip>
-          <v-chip v-if="recommendation.imdb_rating" size="small" variant="tonal" color="amber">
+          <v-chip v-if="item.year" size="small" variant="tonal">{{ item.year }}</v-chip>
+          <v-chip size="small" label variant="tonal" color="primary">{{ item.title_type }}</v-chip>
+          <v-chip v-if="item.imdb_rating" size="small" variant="tonal" color="amber">
             <v-icon size="x-small" start>mdi-star</v-icon>
-            IMDB {{ recommendation.imdb_rating }}
+            IMDB {{ item.imdb_rating }}
           </v-chip>
-          <span v-if="recommendation.num_votes" class="text-caption text-medium-emphasis">
-            {{ recommendation.num_votes.toLocaleString() }} votes
+          <span v-if="item.num_votes" class="text-caption text-medium-emphasis">
+            {{ item.num_votes.toLocaleString() }} votes
           </span>
-          <v-chip v-if="recommendation.language" size="small" variant="tonal" color="info" prepend-icon="mdi-translate">
-            {{ recommendation.language }}
+          <v-chip v-if="item.language" size="small" variant="tonal" color="info" prepend-icon="mdi-translate">
+            {{ item.language }}
           </v-chip>
         </div>
 
         <!-- All genres -->
-        <div v-if="recommendation.genres.length" class="mb-4">
+        <div v-if="item.genres.length" class="mb-4">
           <div class="text-overline text-medium-emphasis mb-1">Genres</div>
           <div class="d-flex flex-wrap ga-1">
             <v-chip
-              v-for="genre in recommendation.genres"
+              v-for="genre in item.genres"
               :key="genre"
               size="small"
               variant="outlined"
@@ -299,29 +239,29 @@ async function handleDismiss() {
         </div>
 
         <!-- Director -->
-        <div v-if="recommendation.director" class="mb-3">
+        <div v-if="item.director" class="mb-3">
           <div class="text-overline text-medium-emphasis mb-1">Director</div>
           <div class="text-body-1">
             <v-icon size="small" class="mr-1">mdi-movie-open</v-icon>
-            {{ recommendation.director }}
+            {{ item.director }}
           </div>
         </div>
 
         <!-- Actors -->
-        <div v-if="recommendation.actors.length" class="mb-3">
+        <div v-if="item.actors.length" class="mb-3">
           <div class="text-overline text-medium-emphasis mb-1">Cast</div>
           <div class="text-body-1">
             <v-icon size="small" class="mr-1">mdi-account-group</v-icon>
-            {{ recommendation.actors.join(', ') }}
+            {{ item.actors.join(', ') }}
           </div>
         </div>
 
         <!-- Similar titles (recommendation mode only) -->
-        <div v-if="similarTo.length" class="mb-4">
+        <div v-if="item.similar_to?.length" class="mb-4">
           <div class="text-overline text-medium-emphasis mb-1">Similar To</div>
           <div class="d-flex flex-wrap ga-1">
             <v-chip
-              v-for="title in similarTo"
+              v-for="title in item.similar_to"
               :key="title"
               size="small"
               variant="tonal"
@@ -333,16 +273,16 @@ async function handleDismiss() {
         </div>
 
         <!-- All explanations / similarity reasons -->
-        <div v-if="explanations.length">
+        <div v-if="item.display_explanations.length">
           <div class="text-overline text-medium-emphasis mb-1">
-            {{ isSimilarMode ? 'Why It\'s Similar' : 'Why We Recommend This' }}
+            {{ item.score_label?.includes('match') ? 'Why It\'s Similar' : 'Why We Recommend This' }}
           </div>
           <v-list density="compact" class="bg-transparent pa-0">
             <v-list-item
-              v-for="(reason, i) in explanations"
+              v-for="(reason, i) in item.display_explanations"
               :key="i"
               :title="reason"
-              :prepend-icon="isSimilarMode ? 'mdi-link-variant' : 'mdi-check-circle-outline'"
+              :prepend-icon="item.score_label?.includes('match') ? 'mdi-link-variant' : 'mdi-check-circle-outline'"
               class="px-0"
             />
           </v-list>
@@ -353,11 +293,11 @@ async function handleDismiss() {
 
       <v-card-actions class="pa-3">
         <v-btn
-          v-if="recommendation.imdb_url"
+          v-if="item.imdb_url"
           variant="tonal"
           color="primary"
           prepend-icon="mdi-open-in-new"
-          :href="recommendation.imdb_url"
+          :href="item.imdb_url"
           target="_blank"
           rel="noopener"
         >

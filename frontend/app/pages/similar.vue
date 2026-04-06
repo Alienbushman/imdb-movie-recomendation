@@ -2,6 +2,7 @@
 import { useSimilarStore } from '../stores/similar'
 import { useFiltersStore } from '../stores/filters'
 import type { TitleSearchResult, SimilarTitle } from '../types'
+import { toSimilarCardItem } from '../types'
 
 const similar = useSimilarStore()
 const filters = useFiltersStore()
@@ -179,7 +180,7 @@ function handleDismissed(imdbId: string) {
         <RecommendationCard
           v-for="item in sortedResults"
           :key="item.imdb_id ?? item.title"
-          :recommendation="item"
+          :item="toSimilarCardItem(item)"
           @dismissed="handleDismissed"
           @exclude-genre="handleExcludeGenre"
           @exclude-language="handleExcludeLanguage"

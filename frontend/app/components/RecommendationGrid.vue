@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { Recommendation } from '../types'
+import { toCardItem } from '../types'
 
-defineProps<{
+const props = defineProps<{
   items: Recommendation[]
   loading: boolean
   hasData: boolean
   gridDense: boolean
 }>()
+
+const displayItems = computed(() => props.items.map(toCardItem))
 
 const emit = defineEmits<{
   generate: []
@@ -46,9 +49,9 @@ const emit = defineEmits<{
   <!-- Recommendation grid -->
   <div v-else data-e2e="recommendations-grid" class="card-grid" :class="{ 'card-grid--dense': gridDense }">
     <RecommendationCard
-      v-for="rec in items"
+      v-for="rec in displayItems"
       :key="rec.imdb_id ?? rec.title"
-      :recommendation="rec"
+      :item="rec"
       @dismissed="emit('dismissed', $event)"
       @exclude-genre="emit('excludeGenre', $event)"
       @exclude-language="emit('excludeLanguage', $event)"
