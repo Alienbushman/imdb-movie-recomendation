@@ -122,7 +122,7 @@ tickets:
 
   - id: "010"
     title: "Frontend Component Modularization"
-    status: open
+    status: done
     priority: medium
     component: frontend
     subtask_dir: 010-frontend-modularization
@@ -132,7 +132,7 @@ tickets:
       - { id: ST-003, title: "Extract CategoryTabs Component",       status: done, effort: low,        depends_on: [ST-002] }
       - { id: ST-004, title: "Extract RecommendationGrid Component", status: done, effort: low-medium, depends_on: [ST-003] }
       - { id: ST-005, title: "Add Slots to FilterDrawer",            status: done, effort: low,        depends_on: [] }
-      - { id: ST-006, title: "Define CardDisplayItem Union Type",    status: open, effort: low,        depends_on: [] }
+      - { id: ST-006, title: "Define CardDisplayItem Union Type",    status: done, effort: low,        depends_on: [] }
 
   - id: "011"
     title: "Browse by Director or Actor"

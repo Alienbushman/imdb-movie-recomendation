@@ -9,6 +9,6 @@
 | ST-003 | Extract CategoryTabs Component | Done | 2026-04-06 | |
 | ST-004 | Extract RecommendationGrid Component | Done | 2026-04-06 | Added gridDense prop (T008 feature) |
 | ST-005 | Add Slots to FilterDrawer | Done | 2026-04-06 | |
-| ST-006 | Define CardDisplayItem Union Type | Open | | |
+| ST-006 | Define CardDisplayItem Union Type | Done | 2026-04-06 | Also added toSimilarCardItem since T009 is done |
 
-**Completion: 5 / 6**
+**Completion: 6 / 6**
