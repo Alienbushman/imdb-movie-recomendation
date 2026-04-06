@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useSimilarStore } from '../stores/similar'
 import { useFiltersStore } from '../stores/filters'
-import type { TitleSearchResult } from '../types'
+import type { TitleSearchResult, SimilarTitle } from '../types'
 
 const similar = useSimilarStore()
 const filters = useFiltersStore()
@@ -32,29 +32,53 @@ function formatType(type: string): string {
   return map[type] || type
 }
 
-// Watch filters for auto-apply (debounced)
-let _filterTimer: ReturnType<typeof setTimeout> | null = null
-watch(
-  () => [
-    filters.yearRange,
-    filters.selectedGenres,
-    filters.excludedGenres,
-    filters.selectedLanguages,
-    filters.excludedLanguages,
-    filters.minImdbRating,
-    filters.maxRuntime,
-    filters.minVoteCount,
-    similar.seenFilter,
-  ],
-  () => {
-    if (!similar.selectedSeed) return
-    if (_filterTimer) clearTimeout(_filterTimer)
-    _filterTimer = setTimeout(() => {
-      similar.applyFilters()
-    }, 400)
-  },
-  { deep: true },
-)
+// Sort
+type SimilarSortOption = 'similarity' | 'predicted' | 'imdb_rating' | 'year_desc'
+const sortBy = ref<SimilarSortOption>('similarity')
+const sortOptions = [
+  { label: 'Most Similar', value: 'similarity' },
+  { label: 'Best Match', value: 'predicted' },
+  { label: 'IMDB Rating', value: 'imdb_rating' },
+  { label: 'Newest', value: 'year_desc' },
+]
+
+const sortedResults = computed<SimilarTitle[]>(() => {
+  if (!similar.similarResults) return []
+  const items = [...similar.similarResults.results]
+  switch (sortBy.value) {
+    case 'similarity':
+      items.sort((a, b) => b.similarity_score - a.similarity_score)
+      break
+    case 'predicted':
+      items.sort((a, b) => (b.predicted_score ?? 0) - (a.predicted_score ?? 0))
+      break
+    case 'imdb_rating':
+      items.sort((a, b) => (b.imdb_rating ?? 0) - (a.imdb_rating ?? 0))
+      break
+    case 'year_desc':
+      items.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
+      break
+  }
+  return items
+})
+
+function handleExcludeGenre(genre: string) {
+  filters.addExcludedGenre(genre)
+  similar.applyFilters()
+}
+
+function handleExcludeLanguage(language: string) {
+  filters.addExcludedLanguage(language)
+  similar.applyFilters()
+}
+
+function handleDismissed(imdbId: string) {
+  if (similar.similarResults) {
+    similar.similarResults.results = similar.similarResults.results.filter(
+      r => r.imdb_id !== imdbId,
+    )
+  }
+}
 </script>
 
 <template>
@@ -101,27 +125,25 @@ watch(
         </template>
       </v-autocomplete>
 
-      <!-- Seed summary -->
-      <v-card v-if="similar.selectedSeed && similar.similarResults" variant="tonal" class="mb-4 pa-3">
-        <div class="d-flex align-center ga-2">
-          <v-icon size="20">mdi-movie-star</v-icon>
-          <span class="font-weight-bold">{{ similar.similarResults.seed_title }}</span>
-          <v-chip size="x-small" variant="outlined">{{ similar.similarResults.total_candidates }} candidates</v-chip>
-        </div>
-      </v-card>
-
-      <!-- Seen/Unseen filter -->
-      <div v-if="similar.selectedSeed" class="d-flex align-center ga-2 mb-3">
-        <span class="text-caption text-medium-emphasis">Show:</span>
-        <v-btn-toggle v-model="similar.seenFilter" density="compact" variant="outlined">
-          <v-btn :value="null" size="small">All</v-btn>
-          <v-btn :value="false" size="small">Unseen</v-btn>
-          <v-btn :value="true" size="small">Seen</v-btn>
-        </v-btn-toggle>
-        <v-spacer />
-        <span v-if="similar.similarResults" class="text-caption text-medium-emphasis">
-          Showing {{ similar.similarResults.results.length }} results
+      <!-- Seed summary + sort bar -->
+      <div v-if="similar.selectedSeed && similar.similarResults" class="d-flex align-center ga-2 mb-3">
+        <v-icon size="20">mdi-movie-star</v-icon>
+        <span class="font-weight-bold">{{ similar.similarResults.seed_title }}</span>
+        <span class="text-caption text-medium-emphasis">
+          Showing {{ sortedResults.length }} of {{ similar.similarResults.total_candidates }}
         </span>
+        <v-spacer />
+        <v-select
+          v-model="sortBy"
+          :items="sortOptions"
+          item-title="label"
+          item-value="value"
+          density="compact"
+          hide-details
+          variant="outlined"
+          style="max-width: 180px"
+          prepend-inner-icon="mdi-sort"
+        />
       </div>
 
       <!-- Loading -->
@@ -153,77 +175,20 @@ watch(
       </div>
 
       <!-- Results grid -->
-      <div v-else-if="similar.similarResults?.results.length" class="card-grid">
-        <v-card
-          v-for="item in similar.similarResults.results"
+      <div v-else-if="sortedResults.length" class="card-grid">
+        <RecommendationCard
+          v-for="item in sortedResults"
           :key="item.imdb_id ?? item.title"
-          variant="outlined"
-          class="pa-3"
-        >
-          <div class="d-flex align-center ga-2 mb-2">
-            <span class="font-weight-bold text-body-1 flex-grow-1">
-              <a
-                v-if="item.imdb_url"
-                :href="item.imdb_url"
-                target="_blank"
-                class="text-decoration-none text-on-surface"
-              >
-                {{ item.title }}
-              </a>
-              <template v-else>{{ item.title }}</template>
-            </span>
-            <v-chip size="x-small" variant="tonal">{{ formatType(item.title_type) }}</v-chip>
-            <v-chip v-if="item.is_rated" size="x-small" color="success" variant="flat">Seen</v-chip>
-          </div>
-
-          <div class="d-flex align-center ga-2 mb-2 text-body-2 text-medium-emphasis">
-            <span v-if="item.year">{{ item.year }}</span>
-            <span v-if="item.language">{{ item.language }}</span>
-            <span v-if="item.director">Dir: {{ item.director }}</span>
-          </div>
-
-          <!-- Scores row -->
-          <div class="d-flex align-center ga-3 mb-2">
-            <v-chip
-              size="small"
-              :color="item.similarity_score >= 0.5 ? 'success' : item.similarity_score >= 0.3 ? 'warning' : 'default'"
-              variant="flat"
-            >
-              {{ (item.similarity_score * 100).toFixed(0) }}% match
-            </v-chip>
-            <span v-if="item.imdb_rating" class="text-body-2">
-              <v-icon size="14" color="amber">mdi-star</v-icon>
-              {{ item.imdb_rating.toFixed(1) }}
-            </span>
-            <span v-if="item.predicted_score" class="text-body-2">
-              Predicted: {{ item.predicted_score.toFixed(1) }}
-            </span>
-          </div>
-
-          <!-- Genres -->
-          <div class="d-flex flex-wrap ga-1 mb-2">
-            <v-chip v-for="genre in item.genres" :key="genre" size="x-small" variant="outlined">
-              {{ genre }}
-            </v-chip>
-          </div>
-
-          <!-- Similarity explanation -->
-          <div v-if="item.similarity_explanation.length" class="text-caption text-medium-emphasis">
-            <div v-for="reason in item.similarity_explanation" :key="reason">
-              {{ reason }}
-            </div>
-          </div>
-
-          <!-- Actors -->
-          <div v-if="item.actors.length" class="text-caption text-medium-emphasis mt-1">
-            {{ item.actors.join(', ') }}
-          </div>
-        </v-card>
+          :recommendation="item"
+          @dismissed="handleDismissed"
+          @exclude-genre="handleExcludeGenre"
+          @exclude-language="handleExcludeLanguage"
+        />
       </div>
 
       <!-- No results -->
       <v-alert
-        v-else-if="similar.similarResults && !similar.similarResults.results.length && !similar.loading"
+        v-else-if="similar.similarResults && !sortedResults.length && !similar.loading"
         type="info"
         variant="tonal"
       >
