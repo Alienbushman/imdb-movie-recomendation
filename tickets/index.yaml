@@ -136,12 +136,34 @@ tickets:
 
   - id: "011"
     title: "Browse by Director or Actor"
-    status: open
+    status: done
     priority: medium
     component: full_stack
     subtask_dir: 011-browse-by-person
     subtasks:
       - { id: ST-001, title: "Backend: Person Search + DB Schema Extension", status: done, effort: medium, depends_on: [] }
       - { id: ST-002, title: "Backend: Titles by Person Endpoint",           status: done, effort: medium, depends_on: [ST-001] }
-      - { id: ST-003, title: "Frontend: Person Browse Page with Search",     status: open, effort: medium, depends_on: [ST-001] }
-      - { id: ST-004, title: "Frontend: Results Display + Role Filter",      status: open, effort: medium, depends_on: [ST-002, ST-003] }
+      - { id: ST-003, title: "Frontend: Person Browse Page with Search",     status: done, effort: medium, depends_on: [ST-001] }
+      - { id: ST-004, title: "Frontend: Results Display + Role Filter",      status: done, effort: medium, depends_on: [ST-002, ST-003] }
+
+  - id: "012"
+    title: "Improve Startup Process"
+    status: open
+    priority: medium
+    component: full_stack
+    subtask_dir: 012-improve-startup-process
+    subtasks:
+      - { id: ST-001, title: "Backend: Startup Readiness Fields in /status", status: open, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "Frontend: Onboarding Wizard for First-Time Users", status: open, effort: medium, depends_on: [ST-001] }
+
+  - id: "013"
+    title: "Clean Clone Smoke Test + Docker Fix"
+    status: open
+    priority: high
+    component: full_stack
+    subtask_dir: 013-clean-clone-smoke-test
+    subtasks:
+      - { id: ST-001, title: "Clone + Docker Build",          status: open, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "First Startup + Health Check",  status: open, effort: low,    depends_on: [ST-001] }
+      - { id: ST-003, title: "End-to-End IMDB URL Test",      status: open, effort: medium, depends_on: [ST-002] }
+      - { id: ST-004, title: "Fix Breaking Changes",          status: open, effort: high,   depends_on: [ST-003] }

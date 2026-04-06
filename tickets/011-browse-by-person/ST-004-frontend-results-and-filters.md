@@ -2,7 +2,7 @@
 ticket: "011"
 subtask: 4
 title: "Frontend: Results Display + Role Filter"
-status: open
+status: Done
 effort: medium
 component: frontend
 depends_on: [2, 3]

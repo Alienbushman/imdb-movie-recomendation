@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRecommendationsStore } from '../stores/recommendations'
 import { useSimilarStore } from '../stores/similar'
+import { usePersonStore } from '../stores/person'
 import {
   useFiltersStore,
   ALL_GENRES,
@@ -14,9 +15,11 @@ import {
 const route = useRoute()
 const recommendations = useRecommendationsStore()
 const similar = useSimilarStore()
+const person = usePersonStore()
 const filters = useFiltersStore()
 
 const isSimilarPage = computed(() => route.path === '/similar')
+const isPersonPage = computed(() => route.path === '/person')
 
 // Search state for genre/language lists
 const genreSearch = ref('')
@@ -116,6 +119,8 @@ function scheduleApply() {
   _debounceTimer = setTimeout(() => {
     if (isSimilarPage.value) {
       similar.applyFilters()
+    } else if (isPersonPage.value) {
+      person.applyFilters()
     } else if (recommendations.pipelineReady) {
       recommendations.applyFilters()
     }
@@ -149,6 +154,8 @@ function resetAndApply() {
   if (isSimilarPage.value) {
     similar.seenFilter = null
     similar.applyFilters()
+  } else if (isPersonPage.value) {
+    person.applyFilters()
   } else if (recommendations.pipelineReady) {
     recommendations.applyFilters()
   }

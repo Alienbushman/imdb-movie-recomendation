@@ -6,9 +6,9 @@ Rows are ordered by execution order. Work top-to-bottom unless dependencies allo
 |---|---|---|---|---|---|
 | ST-001 | Backend: Person Search + DB Schema Extension | High | Done | — | Name string used as name_id (nconst IDs not persisted in CandidateTitle) |
 | ST-002 | Backend: Titles by Person Endpoint | High | Done | ST-001 | Two-query approach: COUNT then paginated SELECT |
-| ST-003 | Frontend: Person Browse Page | Medium | Open | ST-001 | New page, nav link, autocomplete |
-| ST-004 | Frontend: Results Display + Role Filter | Medium | Open | ST-002, ST-003 | Cards, role toggle, sort controls |
+| ST-003 | Frontend: Person Browse Page | Medium | Done | ST-001 | New page, nav link, autocomplete |
+| ST-004 | Frontend: Results Display + Role Filter | Medium | Done | ST-002, ST-003 | Cards, role toggle, sort controls |
 
 ## Completion
 
-2 / 4 complete
+4 / 4 complete

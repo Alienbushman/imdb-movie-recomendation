@@ -2,7 +2,7 @@
 ticket: "011"
 subtask: 3
 title: "Frontend: Person Browse Page with Search"
-status: open
+status: Done
 effort: medium
 component: frontend
 depends_on: [1]

@@ -97,6 +97,18 @@ async function handleDismiss() {
     </v-card-subtitle>
 
     <v-card-text class="flex-grow-1 pt-1">
+      <!-- Role chips (person browse mode) -->
+      <div v-if="item.roles?.length" class="mb-2">
+        <v-chip
+          v-for="role in item.roles"
+          :key="role"
+          size="x-small"
+          variant="tonal"
+          color="secondary"
+          class="mr-1 text-capitalize"
+        >{{ role }}</v-chip>
+      </div>
+
       <!-- Genres (click to exclude) — max 4 visible -->
       <div data-e2e="card-genres" class="mb-2">
         <v-tooltip v-for="genre in visibleGenres" :key="genre" :text="`Exclude ${genre}`" location="top">
