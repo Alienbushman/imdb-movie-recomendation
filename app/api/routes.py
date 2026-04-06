@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Annotated
 
@@ -9,6 +10,8 @@ from app.models.schemas import (
     DismissedListResponse,
     DismissResponse,
     PersonSearchResult,
+    PersonTitleResult,
+    PersonTitlesResponse,
     PipelineStatus,
     Recommendation,
     RecommendationFilters,
@@ -28,7 +31,13 @@ from app.services.pipeline import (
     get_recommendations_from_db,
     run_pipeline,
 )
-from app.services.scored_store import has_scored_results, search_people, search_titles
+from app.services.scored_store import (
+    get_person,
+    has_scored_results,
+    query_titles_by_person,
+    search_people,
+    search_titles,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +120,71 @@ def search_people_endpoint(
         return []
     rows = search_people(q, limit)
     return [PersonSearchResult(**r) for r in rows]
+
+
+@router.get(
+    "/people/{name_id:path}",
+    response_model=PersonTitlesResponse,
+    summary="Get top-scored titles featuring a director or actor",
+    tags=["Person Browse"],
+    responses={
+        200: {"description": "Titles featuring this person, ranked by predicted score."},
+        404: {"description": "Person not found."},
+        503: {"description": "Pipeline has not been run yet."},
+    },
+)
+def titles_by_person(
+    name_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    min_year: int | None = Query(None, description="Exclude titles released before this year."),
+    max_year: int | None = Query(None, description="Exclude titles released after this year."),
+    min_rating: float | None = Query(None, description="Minimum IMDB rating.", ge=0.0, le=10.0),
+    min_votes: int | None = Query(None, description="Minimum IMDB vote count.", ge=0),
+    max_runtime: int | None = Query(None, description="Maximum runtime in minutes.", ge=0),
+):
+    """Return scored titles featuring the given person, ranked by predicted taste score."""
+    if not has_scored_results():
+        raise HTTPException(status_code=503, detail="Pipeline has not been run yet.")
+
+    person = get_person(name_id)
+    if person is None:
+        raise HTTPException(status_code=404, detail=f"Person {name_id!r} not found.")
+
+    dismissed = get_dismissed_ids()
+    total, rows = query_titles_by_person(
+        name_id=name_id,
+        limit=limit,
+        min_year=min_year,
+        max_year=max_year,
+        min_rating=min_rating,
+        min_votes=min_votes,
+        max_runtime=max_runtime,
+        dismissed_ids=dismissed,
+    )
+
+    results = [
+        PersonTitleResult(
+            imdb_id=row["imdb_id"],
+            title=row["title"],
+            year=row["year"],
+            title_type=row["title_type"],
+            imdb_rating=row["imdb_rating"],
+            num_votes=row["num_votes"],
+            runtime_mins=row["runtime_mins"],
+            genres=json.loads(row["genres"]),
+            predicted_score=row["predicted_score"],
+            languages=json.loads(row["languages"] or "[]"),
+            roles=row["roles_csv"].split(",") if row.get("roles_csv") else [],
+        )
+        for row in rows
+    ]
+    return PersonTitlesResponse(
+        name_id=person["name_id"],
+        name=person["name"],
+        primary_profession=person.get("primary_profession"),
+        total=total,
+        results=results,
+    )
 
 
 # ---------------------------------------------------------------------------

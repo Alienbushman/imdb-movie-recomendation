@@ -159,6 +159,36 @@ class PersonSearchResult(BaseModel):
     )
 
 
+class PersonTitleResult(BaseModel):
+    """A scored title from the Browse by Person results."""
+
+    imdb_id: str
+    title: str
+    year: int | None = None
+    title_type: str
+    imdb_rating: float | None = None
+    num_votes: int | None = None
+    runtime_mins: int | None = None
+    genres: list[str] = []
+    predicted_score: float
+    explanation: list[str] = []
+    similar_to: list[str] = []
+    languages: list[str] = []
+    roles: list[str] = Field(
+        description="The roles this person played on the title (e.g. ['director', 'writer'])."
+    )
+
+
+class PersonTitlesResponse(BaseModel):
+    """Response from the titles-by-person endpoint."""
+
+    name_id: str
+    name: str
+    primary_profession: str | None = None
+    total: int = Field(description="Total matching titles before limit is applied.")
+    results: list[PersonTitleResult]
+
+
 class SimilarTitle(BaseModel):
     """A title similar to the seed, with similarity details."""
 

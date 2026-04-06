@@ -394,6 +394,100 @@ def query_candidates(
     return results[:top_n]
 
 
+def get_person(name_id: str) -> dict | None:
+    """Return the people row for name_id, or None if not found."""
+    db = _db_path()
+    if not db.exists():
+        return None
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT name_id, name, primary_profession FROM people WHERE name_id = ?",
+            (name_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+
+
+def query_titles_by_person(
+    name_id: str,
+    limit: int = 100,
+    min_year: int | None = None,
+    max_year: int | None = None,
+    min_rating: float | None = None,
+    min_votes: int | None = None,
+    max_runtime: int | None = None,
+    dismissed_ids: set[str] | None = None,
+) -> tuple[int, list[dict]]:
+    """Return (total_count, rows) for scored titles featuring name_id.
+
+    Rows include all scored_candidates columns plus a `roles_csv` string.
+    Results are ordered by predicted_score DESC.
+    """
+    db = _db_path()
+    if not db.exists():
+        return 0, []
+    conn = _connect()
+    try:
+        params: list = [name_id]
+        where = ["tp.name_id = ?"]
+
+        if min_year is not None:
+            where.append("sc.year >= ?")
+            params.append(min_year)
+        if max_year is not None:
+            where.append("sc.year <= ?")
+            params.append(max_year)
+        if min_rating is not None:
+            where.append("sc.imdb_rating >= ?")
+            params.append(min_rating)
+        if min_votes is not None:
+            where.append("sc.num_votes >= ?")
+            params.append(min_votes)
+        if max_runtime is not None:
+            where.append("(sc.runtime_mins IS NULL OR sc.runtime_mins <= ?)")
+            params.append(max_runtime)
+        if dismissed_ids and len(dismissed_ids) <= 500:
+            d_ph = ",".join("?" * len(dismissed_ids))
+            where.append(f"sc.imdb_id NOT IN ({d_ph})")
+            params.extend(sorted(dismissed_ids))
+
+        where_clause = " AND ".join(where)
+        base_sql = (
+            "FROM scored_candidates sc "
+            "JOIN title_people tp ON tp.imdb_id = sc.imdb_id "
+            f"WHERE {where_clause}"
+        )
+
+        total_row = conn.execute(
+            f"SELECT COUNT(DISTINCT sc.imdb_id) {base_sql}", params
+        ).fetchone()
+        total = total_row[0] if total_row else 0
+
+        rows = conn.execute(
+            f"SELECT sc.*, GROUP_CONCAT(DISTINCT tp.role) AS roles_csv {base_sql} "
+            "GROUP BY sc.imdb_id "
+            "ORDER BY sc.predicted_score DESC "
+            "LIMIT ?",
+            params + [limit],
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return 0, []
+    finally:
+        conn.close()
+
+    large_dismissed = dismissed_ids if dismissed_ids and len(dismissed_ids) > 500 else set()
+    result = []
+    for row in rows:
+        if large_dismissed and row["imdb_id"] in large_dismissed:
+            continue
+        result.append(dict(row))
+    return total, result
+
+
 def write_people(
     people: list[dict],
     title_people: list[dict],
