@@ -269,7 +269,9 @@ def _save_cache(data: list[dict]) -> None:
     logger.info("Cached %d candidates to %s", len(data), path)
 
 
-_REQUIRED_CACHE_FIELDS = {"language", "writers", "composers", "cinematographers", "is_anime"}
+_REQUIRED_CACHE_FIELDS = {
+    "language", "languages", "writers", "composers", "cinematographers", "is_anime",
+}
 
 
 def invalidate_stale_cache() -> bool:
@@ -489,12 +491,14 @@ def _resolve_names(
     return resolved
 
 
-def _load_language_data(title_ids: set[str]) -> tuple[dict[str, str], dict[str, str]]:
+def _load_language_data(
+    title_ids: set[str],
+) -> tuple[dict[str, str], dict[str, str], dict[str, list[str]]]:
     """Load the original language and country code for titles from title.akas.
 
     Streams in chunks to avoid holding the full ~2 GB uncompressed file in memory.
 
-    Returns (lang_by_title, country_by_title).
+    Returns (lang_by_title, country_by_title, all_langs_by_title).
     """
     settings = get_settings()
     akas_path = PROJECT_ROOT / settings.imdb_datasets.title_akas
@@ -504,7 +508,7 @@ def _load_language_data(title_ids: set[str]) -> tuple[dict[str, str], dict[str, 
             "title.akas not found — language info unavailable. "
             "Run POST /api/v1/download-datasets to fetch it."
         )
-        return {}, {}
+        return {}, {}, {}
 
     t0 = time.perf_counter()
     logger.info("Streaming title.akas for language data (%s)", akas_path)
@@ -528,7 +532,7 @@ def _load_language_data(title_ids: set[str]) -> tuple[dict[str, str], dict[str, 
             relevant.append(filtered)
 
     if not relevant:
-        return {}, {}
+        return {}, {}, {}
 
     akas = pd.concat(relevant, ignore_index=True)
     del relevant
@@ -567,6 +571,13 @@ def _load_language_data(title_ids: set[str]) -> tuple[dict[str, str], dict[str, 
         )
         lang_by_title.update(fallback)
 
+    all_langs_by_title: dict[str, list[str]] = (
+        akas.dropna(subset=["_resolved"])
+        .groupby("titleId")["_resolved"]
+        .agg(lambda s: sorted(s.unique().tolist()))
+        .to_dict()
+    )
+
     logger.info(
         "Resolved language for %d / %d titles, country for %d titles in %.2fs",
         len(lang_by_title),
@@ -581,7 +592,7 @@ def _load_language_data(title_ids: set[str]) -> tuple[dict[str, str], dict[str, 
         len(title_ids),
         100 * null_count / max(len(title_ids), 1),
     )
-    return lang_by_title, country_by_title
+    return lang_by_title, country_by_title, all_langs_by_title
 
 
 RatedPersonData = dict[str, list[str]] | None
@@ -748,7 +759,7 @@ def load_candidates_from_datasets(
     gc.collect()
 
     # --- Step 5: Stream title.akas for language/country ---
-    lang_by_title, country_by_title = _load_language_data(candidate_ids)
+    lang_by_title, country_by_title, all_langs_by_title = _load_language_data(candidate_ids)
 
     # --- Step 6: Load anime whitelist ---
     anime_ids = _load_anime_ids()
@@ -797,6 +808,7 @@ def load_candidates_from_datasets(
                 directors=directors_by_title.get(tconst, []),
                 actors=actors_by_title.get(tconst, []),
                 language=lang_by_title.get(tconst),
+                languages=all_langs_by_title.get(tconst, []),
                 country_code=country_by_title.get(tconst),
                 writers=writers_by_title.get(tconst, []),
                 composers=composers_by_title.get(tconst, []),
