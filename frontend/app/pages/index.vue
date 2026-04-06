@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PipelineStatus } from '../types'
 import { useRecommendationsStore } from '../stores/recommendations'
 import { useFiltersStore } from '../stores/filters'
 
@@ -62,15 +63,82 @@ function scrollToTop() {
   contentEl.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+const showSetupWizard = ref(false)
+const setupStatus = ref<PipelineStatus | null>(null)
+let statusPollInterval: ReturnType<typeof setInterval> | null = null
+
+async function initializeApp() {
+  try {
+    const status = await api.getStatus()
+    if (status.watchlist_ready) {
+      // Returning user — proceed with normal load flow
+      showSetupWizard.value = false
+      recommendations.loadOrGenerate()
+    } else {
+      // Fresh install — show wizard
+      showSetupWizard.value = true
+      setupStatus.value = status
+      startStatusPolling()
+    }
+  } catch {
+    // Backend still starting up; show wizard and retry
+    showSetupWizard.value = true
+    setTimeout(initializeApp, 2000)
+  }
+}
+
+function startStatusPolling() {
+  if (statusPollInterval) return
+  statusPollInterval = setInterval(async () => {
+    try {
+      setupStatus.value = await api.getStatus()
+      if (setupStatus.value.datasets_ready && !setupStatus.value.datasets_downloading) {
+        clearInterval(statusPollInterval!)
+        statusPollInterval = null
+      }
+    } catch { /* ignore transient poll errors */ }
+  }, 3000)
+}
+
+async function handleSetupStart(imdbUrl: string | undefined, file: File | undefined) {
+  if (file) {
+    try {
+      await api.uploadWatchlist(file)
+      await recommendations.generate()
+    } catch (e: unknown) {
+      const err = e as { data?: { detail?: string }; message?: string }
+      recommendations.error = err.data?.detail || err.message || 'Failed to upload watchlist'
+    }
+  } else {
+    await recommendations.generate(false, imdbUrl)
+  }
+  if (!recommendations.error) {
+    showSetupWizard.value = false
+  }
+}
+
 onMounted(() => {
-  recommendations.loadOrGenerate()
+  initializeApp()
   contentEl.value?.addEventListener('scroll', onScroll)
 })
-onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
+
+onUnmounted(() => {
+  contentEl.value?.removeEventListener('scroll', onScroll)
+  if (statusPollInterval) {
+    clearInterval(statusPollInterval)
+    statusPollInterval = null
+  }
+})
 </script>
 
 <template>
-  <div class="d-flex" style="min-height: calc(100vh - 64px)">
+  <div>
+    <SetupWizard
+      v-if="showSetupWizard"
+      :status="setupStatus"
+      @started="handleSetupStart"
+    />
+    <div class="d-flex" style="min-height: calc(100vh - 64px)">
     <!-- Persistent filter sidebar -->
     <FilterDrawer />
 
@@ -143,6 +211,7 @@ onUnmounted(() => contentEl.value?.removeEventListener('scroll', onScroll))
         style="position: fixed; bottom: 24px; right: 24px; z-index: 10"
         @click="scrollToTop"
       />
+    </div>
     </div>
   </div>
 </template>

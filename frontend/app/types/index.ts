@@ -138,6 +138,10 @@ export interface PipelineStatus {
   candidates_count: number
   model_trained: boolean
   last_run: string | null
+  datasets_ready: boolean
+  datasets_downloading: boolean
+  watchlist_ready: boolean
+  scored_db_ready: boolean
 }
 
 /** Shared interface for items displayed in RecommendationCard */
