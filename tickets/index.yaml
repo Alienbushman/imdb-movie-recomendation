@@ -1,0 +1,121 @@
+## Machine-readable ticket index
+## Source of truth for ticket/subtask status. Update this when changing status.
+## Agents: read this file first to orient before starting any ticket work.
+
+tickets:
+  - id: "001"
+    title: "Improve Prediction Model Features"
+    status: done
+    priority: high
+    component: backend
+    subtask_dir: 001-improve-prediction-model-features
+    subtasks:
+      - { id: ST-001, title: "Genre Affinity Scores",          status: done, effort: low,         depends_on: [] }
+      - { id: ST-002, title: "Director/Actor Count + Mean",     status: done, effort: low,         depends_on: [] }
+      - { id: ST-003, title: "Language as Feature",             status: done, effort: low,         depends_on: [] }
+      - { id: ST-004, title: "Writer Taste Features",           status: done, effort: medium,      depends_on: [] }
+      - { id: ST-005, title: "Title Type as Feature",           status: done, effort: low,         depends_on: [] }
+      - { id: ST-006, title: "Genre Interaction Pairs",         status: done, effort: low,         depends_on: [ST-001] }
+      - { id: ST-007, title: "Popularity Tier + Title Age",     status: done, effort: low,         depends_on: [] }
+      - { id: ST-008, title: "Composers + Cinematographers",    status: done, effort: low,         depends_on: [] }
+      - { id: ST-009, title: "TMDB API Integration",            status: done, effort: medium-high, depends_on: [] }
+      - { id: ST-010, title: "OMDb API Integration",            status: done, effort: medium,      depends_on: [] }
+
+  - id: "002"
+    title: "Replace CSV with IMDB URL"
+    status: done
+    priority: high
+    component: full_stack
+    subtask_dir: 002-replace-csv-with-imdb-url
+    subtasks:
+      - { id: ST-001, title: "Backend: IMDB URL Scraper Service",    status: done, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "Backend: Ingest CSV Content String",   status: done, effort: low,    depends_on: [] }
+      - { id: ST-003, title: "Backend: Wire URL Through Pipeline",   status: done, effort: low,    depends_on: [ST-001, ST-002] }
+      - { id: ST-004, title: "Backend: URL Parameter to API Routes", status: done, effort: low,    depends_on: [ST-003] }
+      - { id: ST-005, title: "Frontend: Update API Composable",      status: done, effort: low,    depends_on: [] }
+      - { id: ST-006, title: "Frontend: URL Input to UI",            status: done, effort: low,    depends_on: [ST-005] }
+      - { id: ST-007, title: "CSV Upload Fallback",                  status: done, effort: medium, depends_on: [ST-004] }
+      - { id: ST-008, title: "Documentation: Update CLAUDE.md",      status: done, effort: low,    depends_on: [ST-001, ST-002, ST-003, ST-004, ST-005, ST-006, ST-007] }
+
+  - id: "003"
+    title: "Improve Frontend UX"
+    status: done
+    priority: high
+    component: full_stack
+    subtask_dir: 003-improve-frontend-ux
+    subtasks:
+      - { id: ST-001, title: "Redesign Filter Panel UX",           status: done, effort: medium,      depends_on: [] }
+      - { id: ST-002, title: "Per-Category Result Count Controls",  status: done, effort: low-medium,  depends_on: [] }
+      - { id: ST-003, title: "Improve Date Range Selector",         status: done, effort: low,         depends_on: [ST-001] }
+      - { id: ST-004, title: "Show Title Metadata on Dismissed Page", status: done, effort: low-medium, depends_on: [] }
+      - { id: ST-005, title: "Fix Card Layout and Region",          status: done, effort: low-medium,  depends_on: [] }
+      - { id: ST-006, title: "Visual Design Overhaul",              status: done, effort: medium-high, depends_on: [ST-001, ST-005] }
+      - { id: ST-007, title: "Auto-Apply Filters with Debounce",    status: done, effort: low,         depends_on: [ST-001] }
+
+  - id: "004"
+    title: "Animation to Anime Rename"
+    status: done
+    priority: medium
+    component: full_stack
+    subtask_dir: 004-animation-to-anime
+    subtasks:
+      - { id: ST-001, title: "Add is_anime Flag (Fribb Whitelist)", status: done, effort: low-medium, depends_on: [] }
+      - { id: ST-002, title: "Rename Backend animation to anime",   status: done, effort: low,        depends_on: [ST-001] }
+      - { id: ST-003, title: "Rename Frontend animation to anime",  status: done, effort: low,        depends_on: [ST-002] }
+
+  - id: "005"
+    title: "Persist Scored Candidates (SQLite)"
+    status: done
+    priority: high
+    component: backend
+    subtask_dir: 005-persist-scored-candidates
+    subtasks:
+      - { id: ST-001, title: "Create SQLite Scored Store",          status: done, effort: medium, depends_on: [] }
+      - { id: ST-002, title: "Pipeline Integration (Write + Slim)",  status: done, effort: medium, depends_on: [ST-001] }
+      - { id: ST-003, title: "Route GET Endpoints to DB",           status: done, effort: medium, depends_on: [ST-002] }
+      - { id: ST-004, title: "Deduplicate name_lookup + Cache Check", status: done, effort: low,  depends_on: [] }
+
+  - id: "006"
+    title: "Fast Initial Page Load"
+    status: open
+    priority: high
+    component: full_stack
+    subtask_dir: 006-fast-initial-load
+    subtasks:
+      - { id: ST-001, title: "Frontend: Try Fast Path on Mount",    status: open, effort: medium, depends_on: [] }
+      - { id: ST-002, title: "Backend: Skip Rescore When DB Fresh", status: open, effort: medium, depends_on: [] }
+
+  - id: "007"
+    title: "Improve Language Data"
+    status: open
+    priority: medium
+    component: backend
+    subtask_dir: 007-improve-language-data
+    subtasks:
+      - { id: ST-001, title: "Block Ambiguous Region Fallback",     status: open, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "Use Mode Aggregation for Language",   status: open, effort: low,    depends_on: [ST-001] }
+      - { id: ST-003, title: "Log Language Null Coverage",           status: done, effort: low,    depends_on: [] }
+      - { id: ST-004, title: "Add languages List Field",            status: open, effort: medium, depends_on: [ST-001, ST-002] }
+
+  - id: "008"
+    title: "Client-Side Sorting + UX Polish"
+    status: open
+    priority: medium
+    component: frontend
+    subtask_dir: 008-sorting-and-ux-polish
+    subtasks:
+      - { id: ST-001, title: "Client-Side Sort Controls",            status: open, effort: low-medium, depends_on: [] }
+      - { id: ST-002, title: "Scroll-to-Top FAB",                    status: open, effort: low,        depends_on: [] }
+      - { id: ST-003, title: "Grid Density Toggle + Result Count",   status: open, effort: low,        depends_on: [] }
+
+  - id: "009"
+    title: "Find Similar Movies"
+    status: open
+    priority: medium
+    component: full_stack
+    subtask_dir: 009-find-similar-movies
+    subtasks:
+      - { id: ST-001, title: "Backend: Title Search Endpoint",              status: open, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "Backend: Similarity Engine + API Endpoint",   status: open, effort: medium, depends_on: [ST-001] }
+      - { id: ST-003, title: "Frontend: Similar Page with Search + Routing", status: open, effort: medium, depends_on: [ST-001] }
+      - { id: ST-004, title: "Frontend: Results Display + Seen/Unseen Filter", status: open, effort: medium, depends_on: [ST-002, ST-003] }
