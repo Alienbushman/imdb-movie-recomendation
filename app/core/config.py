@@ -17,7 +17,7 @@ class ImdbDatasetsConfig(BaseModel):
     title_crew: str = "data/datasets/title.crew.tsv.gz"
     anime_list: str = "data/datasets/anime-list-mini.json"
     anime_list_url: str = "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json"
-    min_vote_count: int = 10000
+    min_vote_count: int = 100
     min_rating: float = 5.0
     min_year: int = 1970
     include_title_types: list[str] = ["movie", "tvSeries", "tvMiniSeries", "tvMovie"]

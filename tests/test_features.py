@@ -506,10 +506,10 @@ class TestFeatureVectorToArray:
         idx = feature_names.index("genre_action")
         assert arr[idx] == 1.0
 
-    def test_missing_feature_defaults_to_zero(self):
+    def test_missing_feature_raises(self):
         fv = rated_title_to_features(_make_rated())
-        arr = feature_vector_to_array(fv, ["imdb_rating", "nonexistent_feature"])
-        assert arr[1] == 0.0
+        with pytest.raises(AssertionError, match="missing keys"):
+            feature_vector_to_array(fv, ["imdb_rating", "nonexistent_feature"])
 
     def test_returns_float_array(self):
         fv = rated_title_to_features(_make_rated())

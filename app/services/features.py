@@ -572,4 +572,6 @@ def feature_vector_to_array(fv: FeatureVector, feature_names: list[str]) -> np.n
     row.update(fv.language_flags)
     row.update(fv.type_flags)
     row.update(fv.genre_pair_flags)
-    return np.array([row.get(name, 0) for name in feature_names], dtype=float)
+    missing = [name for name in feature_names if name not in row]
+    assert not missing, f"feature_vector_to_array missing keys: {missing}"
+    return np.array([row[name] for name in feature_names], dtype=float)

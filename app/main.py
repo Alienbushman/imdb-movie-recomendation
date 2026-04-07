@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 from contextlib import asynccontextmanager
 
@@ -97,9 +98,16 @@ are all controlled via `config.yaml` — no code changes needed.
     },
 )
 
+_cors_origins_env = os.environ.get("CORS_ORIGINS", "")
+_cors_origins: list[str] = (
+    [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+    if _cors_origins_env
+    else ["http://localhost:3000", "http://localhost:9137"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:9137"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
