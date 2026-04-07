@@ -8,8 +8,8 @@ Rows are ordered by execution order. Work top-to-bottom.
 | ST-002 | Align min_vote_count code default with config | Low | Done | — | 2026-04-07 |
 | ST-004 | CORS allowed origins via env var | Low | Done | — | 2026-04-07 |
 | ST-005 | Assert feature completeness in feature_vector_to_array | Low | Done | — | 2026-04-07 |
-| ST-003 | Add unit tests for candidates.py | High | In Progress | ST-001 | |
+| ST-003 | Add unit tests for candidates.py | High | Done | ST-001 | 2026-04-07 — 11 tests: _resolve_names, _load_crew_data, writer round-trip |
 
 ## Completion
 
-4 / 5 complete
+5 / 5 complete
