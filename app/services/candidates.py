@@ -653,8 +653,8 @@ def load_candidates_from_datasets(
     All large files (title.principals, name.basics, title.akas) are streamed
     in chunks to keep peak memory well under 1 GB.
 
-    Returns (candidates, rated_actors, rated_composers, rated_cinematographers).
-    All three dicts are None on a cache hit — taste profile comes from the saved model.
+    Returns (candidates, rated_actors, rated_writers, rated_composers, rated_cinematographers).
+    All four dicts are None on a cache hit — taste profile comes from the saved model.
     """
     settings = get_settings()
     ds_cfg = settings.imdb_datasets
@@ -674,7 +674,7 @@ def load_candidates_from_datasets(
             len(seen_ids),
             time.perf_counter() - t_total,
         )
-        return candidates, None, None, None
+        return candidates, None, None, None, None
 
     basics_path = PROJECT_ROOT / ds_cfg.title_basics
     ratings_path = PROJECT_ROOT / ds_cfg.title_ratings
@@ -866,6 +866,7 @@ def load_candidates_from_datasets(
 
     # Extract per-person data for rated (seen) titles — used to build taste profile
     rated_actors = {tid: actors_by_title[tid] for tid in seen_ids if tid in actors_by_title}
+    rated_writers = {tid: writers_by_title[tid] for tid in seen_ids if tid in writers_by_title}
     rated_composers = {
         tid: composers_by_title[tid] for tid in seen_ids if tid in composers_by_title
     }
@@ -876,11 +877,12 @@ def load_candidates_from_datasets(
     }
     logger.info(
         "Loaded %d candidate titles from IMDB datasets in %.2fs "
-        "(rated: %d actors, %d composers, %d cinematographers)",
+        "(rated: %d actors, %d writers, %d composers, %d cinematographers)",
         len(candidates),
         time.perf_counter() - t_total,
         len(rated_actors),
+        len(rated_writers),
         len(rated_composers),
         len(rated_cinematographers),
     )
-    return candidates, rated_actors, rated_composers, rated_cinematographers
+    return candidates, rated_actors, rated_writers, rated_composers, rated_cinematographers

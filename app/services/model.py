@@ -23,6 +23,7 @@ MODEL_PATH = PROJECT_ROOT / "data" / "taste_model.pkl"
 def train_taste_model(
     titles: list[RatedTitle],
     rated_actors: dict[str, list[str]] | None = None,
+    rated_writers: dict[str, list[str]] | None = None,
     rated_composers: dict[str, list[str]] | None = None,
     rated_cinematographers: dict[str, list[str]] | None = None,
 ) -> tuple[lgb.LGBMRegressor, float, list[str], TasteProfile]:
@@ -34,7 +35,9 @@ def train_taste_model(
     settings = get_settings()
     cfg = settings.model
 
-    taste = build_taste_profile(titles, rated_actors, rated_composers, rated_cinematographers)
+    taste = build_taste_profile(
+        titles, rated_actors, rated_writers, rated_composers, rated_cinematographers
+    )
     logger.info(
         "Taste profile: %d directors, %d actors",
         len(taste.director_avg),

@@ -391,10 +391,14 @@ class TestBuildTasteProfile:
 
     def test_writer_averages(self):
         titles = [
-            _make_rated(imdb_id="tt1", user_rating=9, writers=["Writer A"]),
-            _make_rated(imdb_id="tt2", user_rating=7, writers=["Writer A", "Writer B"]),
+            _make_rated(imdb_id="tt1", user_rating=9),
+            _make_rated(imdb_id="tt2", user_rating=7),
         ]
-        profile = build_taste_profile(titles)
+        rated_writers = {
+            "tt1": ["Writer A"],
+            "tt2": ["Writer A", "Writer B"],
+        }
+        profile = build_taste_profile(titles, rated_writers=rated_writers)
         # global_mean=8.0, C=5; Writer A 2 ratings: (16+40)/7=8.0; Writer B 1 rating: (7+40)/6
         assert profile.writer_avg["Writer A"] == pytest.approx(8.0)
         assert profile.writer_avg["Writer B"] == pytest.approx(47 / 6)

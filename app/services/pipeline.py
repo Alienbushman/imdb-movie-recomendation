@@ -92,7 +92,7 @@ def run_pipeline(
         # Step 2: Load candidates (before model so we get rated person data for taste)
         logger.info("Step 2/4: Loading candidates from IMDB datasets")
         t0 = time.perf_counter()
-        candidates, rated_actors, rated_composers, rated_cinematographers = (
+        candidates, rated_actors, rated_writers, rated_composers, rated_cinematographers = (
             load_candidates_from_datasets(all_excluded)
         )
         logger.info(
@@ -115,7 +115,7 @@ def run_pipeline(
             )
         else:
             model, mae, feature_names, taste = train_taste_model(
-                titles, rated_actors, rated_composers, rated_cinematographers
+                titles, rated_actors, rated_writers, rated_composers, rated_cinematographers
             )
             logger.info(
                 "Step 3/4 completed in %.2fs — trained new model (MAE=%.3f, %d features)",

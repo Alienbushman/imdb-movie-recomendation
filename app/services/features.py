@@ -84,6 +84,7 @@ def _bayesian_avg(ratings: list[int], global_mean: float, c: float = 5.0) -> flo
 def build_taste_profile(
     rated_titles: list[RatedTitle],
     rated_actors: dict[str, list[str]] | None = None,
+    rated_writers: dict[str, list[str]] | None = None,
     rated_composers: dict[str, list[str]] | None = None,
     rated_cinematographers: dict[str, list[str]] | None = None,
 ) -> TasteProfile:
@@ -124,11 +125,17 @@ def build_taste_profile(
     genre_avg = {g: _bayesian_avg(r, global_mean) for g, r in genre_ratings.items()}
 
     # Subtask 4: Writer averages (Bayesian-smoothed)
-    writer_ratings: dict[str, list[int]] = defaultdict(list)
-    for t in rated_titles:
-        for w in t.writers:
-            writer_ratings[w].append(t.user_rating)
-    writer_avg = {w: _bayesian_avg(r, global_mean) for w, r in writer_ratings.items()}
+    writer_avg: dict[str, float] = {}
+    if rated_writers:
+        title_rating = {t.imdb_id: t.user_rating for t in rated_titles}
+        writer_ratings: dict[str, list[int]] = defaultdict(list)
+        for imdb_id, writers in rated_writers.items():
+            rating = title_rating.get(imdb_id)
+            if rating is None:
+                continue
+            for w in writers:
+                writer_ratings[w].append(rating)
+        writer_avg = {w: _bayesian_avg(r, global_mean) for w, r in writer_ratings.items()}
 
     # Subtask 8: Composer averages (Bayesian-smoothed)
     composer_avg: dict[str, float] = {}
