@@ -10,6 +10,7 @@ A personalized movie/series recommendation system that learns your taste from yo
 
 ```
 ├── app/                    # Python backend (FastAPI)
+│   ├── main.py             # FastAPI entry point, lifespan startup, CORS middleware
 │   ├── api/routes.py       # All API endpoints
 │   ├── core/config.py      # Settings from config.yaml
 │   ├── models/schemas.py   # Pydantic request/response models
@@ -22,6 +23,7 @@ A personalized movie/series recommendation system that learns your taste from yo
 │       ├── recommend.py    # Scoring, filtering, ranking, explanations
 │       ├── scored_store.py # SQLite persistence for scored candidates
 │       ├── dismissed.py    # Persistent dismiss list (JSON file)
+│       ├── similar.py      # Cosine-similarity engine for "find similar titles"
 │       ├── scrape.py       # Fetches IMDB ratings CSV from user URL
 │       ├── tmdb.py         # TMDB API integration (keywords; opt-in via TMDB_API_KEY)
 │       └── omdb.py         # OMDb API integration (critic scores; opt-in via OMDB_API_KEY)
@@ -60,6 +62,12 @@ The pipeline runs 4 steps in sequence:
 | GET | `/recommendations/series` | Series recommendations (with filters) |
 | GET | `/recommendations/anime` | Anime recommendations (with filters) |
 | GET | `/status` | Pipeline state |
+| GET | `/health` | Liveness check (used by Docker healthcheck) |
+| GET | `/search` | Search titles by name |
+| GET | `/similar/{imdb_id}` | Find titles similar to a given title |
+| GET | `/people/search` | Search directors and actors by name |
+| GET | `/people/{name_id}` | Get all titles for a person |
+| POST | `/recommendations/filter` | Re-filter cached results without re-running pipeline |
 | POST | `/dismiss/{imdb_id}` | Dismiss a title permanently |
 | DELETE | `/dismiss/{imdb_id}` | Restore a dismissed title |
 | GET | `/dismissed` | List all dismissed IDs |
@@ -109,12 +117,15 @@ Read `tickets/index.yaml` for the full machine-readable index with all subtask s
 | 003 | Improve frontend UX | **Done** |
 | 004 | Animation → Anime rename | **Done** |
 | 005 | Persist scored candidates (SQLite) | **Done** |
-| 006 | Fast initial page load (skip rescore) | Open |
-| 007 | Improve language data | Open |
-| 008 | Client-side sorting + UX polish | Open |
-| 009 | Find similar movies | Open |
-| 010 | Frontend component modularization | Open |
-| 011 | Browse by director or actor | Open |
+| 006 | Fast initial page load (skip rescore) | **Done** |
+| 007 | Improve language data | **Done** |
+| 008 | Client-side sorting + UX polish | **Done** |
+| 009 | Find similar movies | **Done** |
+| 010 | Frontend component modularization | **Done** |
+| 011 | Browse by director or actor | **Done** |
+| 012 | Improve startup process | Open |
+| 013 | Clean clone smoke test + Docker fix | Open |
+| 014 | Documentation audit | Open |
 
 ### Ticket File Format
 
@@ -149,18 +160,19 @@ subsystems: []         # e.g. [backend, frontend]
 ### Agent Workflow for Tickets
 
 1. **Orient** — Read `tickets/PROTOCOL.md` (once per session), then `tickets/index.yaml`
-2. **Plan** — Read the parent ticket `.md` for context, the ticket's `AGENT.md` for execution order, then the target `ST-NNN-*.md`
-3. **Check deps** — Verify all dependencies are `Done` in the ticket's `PROGRESS.md`
-4. **Pre-conditions** — Run any `## Pre-conditions` checks in the subtask file
-5. **Execute** — Implement per the `## Fix` steps and acceptance criteria
-6. **Post-conditions** — Run any `## Post-conditions` checks
-7. **Test** — Run the `## Tests` section commands
-8. **Commit** — Use the exact `## Commit Message` from the subtask file
-9. **Update status** — Update status in three places:
-   - Subtask file frontmatter: `status: Done`
-   - `tickets/NNN-slug/PROGRESS.md`: Status column → `Done`
-   - `tickets/index.yaml`: subtask status → `done`
-10. **Record decisions** — Log non-obvious choices in `tickets/NNN-slug/decisions.md`
+2. **Claim** — In `index.yaml`, set the subtask (and parent ticket if `open`) to `in_progress`
+3. **Plan** — Read the parent ticket `.md` for context, the ticket's `AGENT.md` for execution order, then the target `ST-NNN-*.md`
+4. **Check deps** — Verify all dependencies are `done` in `index.yaml`
+5. **Pre-conditions** — Run any `## Pre-conditions` checks in the subtask file
+6. **Execute** — Implement per the `## Fix` steps and acceptance criteria
+7. **Post-conditions** — Run any `## Post-conditions` checks
+8. **Test** — Run the `## Tests` section commands
+9. **Commit** — Use the exact `## Commit Message` from the subtask file
+10. **Update status** — Update status in three places:
+    - Subtask file frontmatter: `status: Done`
+    - `tickets/NNN-slug/PROGRESS.md`: Status column → `Done`
+    - `tickets/index.yaml`: subtask status → `done`; ticket status → `done` if all subtasks done
+11. **Record decisions** — Log non-obvious choices in `tickets/NNN-slug/decisions.md`
 
 ## Linting
 
