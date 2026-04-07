@@ -1,75 +1,55 @@
-# Nuxt Minimal Starter
+# Frontend — IMDB Movie Recommendation Engine
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Nuxt 4 + Vuetify 4 web UI for the IMDB recommendation engine.
 
-## Setup
+## Stack
 
-Make sure to install dependencies:
+- **Nuxt 4** (Vue 3, TypeScript)
+- **Vuetify 4** — dark-theme component library
+- **Nitro** — server-side proxy for backend API calls
 
-```bash
-# npm
-npm install
+## Project Structure
 
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
+```
+frontend/
+├── app/
+│   ├── app.vue                    # Root layout + page router
+│   ├── layouts/default.vue        # App bar with navigation links
+│   ├── pages/
+│   │   ├── index.vue              # Main recommendations page
+│   │   ├── dismissed.vue          # Manage dismissed titles
+│   │   ├── similar/[id].vue       # Find similar titles
+│   │   └── person/[id].vue        # Browse titles by director or actor
+│   ├── components/                # Shared UI components
+│   ├── composables/
+│   │   └── useApi.ts              # Typed API client wrapping $fetch
+│   └── types/
+│       └── index.ts               # TypeScript interfaces matching backend schemas
+├── server/routes/api/[...path].ts # Nitro catch-all proxy → backend
+├── nuxt.config.ts                 # Vuetify module, proxy, runtime config
+├── Dockerfile                     # Multi-stage Node 22 build
+└── package.json
 ```
 
-## Development Server
-
-Start the development server on `http://localhost:3000`:
+## Development
 
 ```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+npm install          # Install dependencies
+npm run dev          # Dev server on http://localhost:3000
+npx nuxt typecheck   # TypeScript type check
 ```
 
-## Production
+In development, `/api` requests are proxied to `http://localhost:8562` (the backend).
+No CORS issues — the backend also allows `localhost:3000`.
 
-Build the application for production:
+## Docker
 
-```bash
-# npm
-npm run build
+In Docker Compose the frontend is exposed on port **9137**. The Nitro server routes
+`/api/*` requests to `http://api:8080` inside the Docker network, so both SSR and
+client-side requests reach the backend correctly.
 
-# pnpm
-pnpm build
+## API Integration
 
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+All backend calls go through `useApi()` in `composables/useApi.ts`, which provides
+typed wrappers for every endpoint. Never call `$fetch('/api/...')` directly from pages
+or components — always use `useApi()`.
