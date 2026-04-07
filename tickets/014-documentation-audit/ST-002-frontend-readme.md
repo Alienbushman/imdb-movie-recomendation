@@ -1,0 +1,135 @@
+---
+id: ST-002
+ticket: "014"
+title: "Rewrite frontend/README.md"
+priority: Medium
+risk: zero
+status: Open
+dependencies: []
+subsystems: [frontend, docs]
+---
+
+# SUBTASK 02 — Rewrite frontend/README.md
+
+---
+
+## Objective
+
+Replace `frontend/README.md` (generic Nuxt Minimal Starter boilerplate) with a
+project-specific document that accurately describes the frontend architecture, pages,
+and development commands.
+
+The authoritative source is `frontend/CLAUDE.md`, which is correct and up to date.
+Derive README content from it, keeping the README user-facing (setup steps, structure,
+quick commands) rather than agent-facing.
+
+---
+
+## Pre-conditions
+
+Confirm the file is still the generic boilerplate:
+
+```bash
+head -3 frontend/README.md
+```
+
+Expected first line: `# Nuxt Minimal Starter`
+
+---
+
+## Fix
+
+Replace the entire contents of `frontend/README.md` with:
+
+```markdown
+# Frontend — IMDB Movie Recommendation Engine
+
+Nuxt 4 + Vuetify 4 web UI for the IMDB recommendation engine.
+
+## Stack
+
+- **Nuxt 4** (Vue 3, TypeScript)
+- **Vuetify 4** — dark-theme component library
+- **Nitro** — server-side proxy for backend API calls
+
+## Project Structure
+
+\`\`\`
+frontend/
+├── app/
+│   ├── app.vue                    # Root layout + page router
+│   ├── layouts/default.vue        # App bar with navigation links
+│   ├── pages/
+│   │   ├── index.vue              # Main recommendations page
+│   │   ├── dismissed.vue          # Manage dismissed titles
+│   │   ├── similar/[id].vue       # Find similar titles
+│   │   └── person/[id].vue        # Browse titles by director or actor
+│   ├── components/                # Shared UI components
+│   ├── composables/
+│   │   └── useApi.ts              # Typed API client wrapping $fetch
+│   └── types/
+│       └── index.ts               # TypeScript interfaces matching backend schemas
+├── server/routes/api/[...path].ts # Nitro catch-all proxy → backend
+├── nuxt.config.ts                 # Vuetify module, proxy, runtime config
+├── Dockerfile                     # Multi-stage Node 22 build
+└── package.json
+\`\`\`
+
+## Development
+
+```bash
+npm install          # Install dependencies
+npm run dev          # Dev server on http://localhost:3000
+npx nuxt typecheck   # TypeScript type check
+```
+
+In development, `/api` requests are proxied to `http://localhost:8562` (the backend).
+No CORS issues — the backend also allows `localhost:3000`.
+
+## Docker
+
+In Docker Compose the frontend is exposed on port **9137**. The Nitro server routes
+`/api/*` requests to `http://api:8080` inside the Docker network, so both SSR and
+client-side requests reach the backend correctly.
+
+## API Integration
+
+All backend calls go through `useApi()` in `composables/useApi.ts`, which provides
+typed wrappers for every endpoint. Never call `$fetch('/api/...')` directly from pages
+or components — always use `useApi()`.
+```
+
+---
+
+## Post-conditions
+
+Verify the file no longer contains the boilerplate:
+
+```bash
+grep -c "Nuxt Minimal Starter" frontend/README.md
+```
+
+Expected: `0`
+
+---
+
+## Tests
+
+```bash
+uv run ruff check app/   # no Python files changed, expect clean
+uv run pytest tests/ -q  # no code changed, expect clean
+```
+
+---
+
+## Files Changed
+
+- `frontend/README.md`
+
+---
+
+## Commit Message
+
+```
+docs: replace frontend/README.md boilerplate with project-specific content (ST-002)
+```
