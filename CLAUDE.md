@@ -30,7 +30,13 @@ A personalized movie/series recommendation system that learns your taste from yo
 ├── frontend/               # Nuxt 4 + Vuetify 4 web UI
 ├── data/                   # Runtime data (not in image, Docker-mounted)
 │   ├── watchlist.csv       # User's IMDB ratings (populated via URL fetch, CSV upload, or manual placement)
-│   ├── datasets/           # IMDB bulk TSV files (~1GB total)
+│   ├── datasets/           # IMDB bulk TSV files (~1GB total, auto-downloaded)
+│   │   ├── title.basics.tsv.gz      # Title metadata: type, year, runtime, genres
+│   │   ├── title.ratings.tsv.gz     # IMDB vote count and average rating
+│   │   ├── title.principals.tsv.gz  # Cast/crew associations per title
+│   │   ├── name.basics.tsv.gz       # Person names for principal lookup
+│   │   ├── title.akas.tsv.gz        # Alternate titles/regions (language inference)
+│   │   └── title.crew.tsv.gz        # Director and writer IDs per title
 │   ├── cache/              # Processed candidates JSON + scored SQLite DB
 │   ├── taste_model.pkl     # Trained model
 │   └── dismissed.json      # Dismissed title IDs
@@ -71,6 +77,23 @@ The pipeline runs 4 steps in sequence:
 | POST | `/dismiss/{imdb_id}` | Dismiss a title permanently |
 | DELETE | `/dismiss/{imdb_id}` | Restore a dismissed title |
 | GET | `/dismissed` | List all dismissed IDs |
+
+## Startup Sequence
+
+`app/main.py` is the FastAPI entry point. On startup (via the `lifespan` context manager):
+
+1. **Cache invalidation** — `invalidate_stale_cache()` runs synchronously. It reads the
+   first 16 KB of `data/cache/imdb_candidates.json` and deletes the file if any required
+   field (e.g. `is_anime`, `languages`) is absent from the first record. This prevents
+   silent stale-cache bugs after schema changes without loading hundreds of MB.
+
+2. **Background dataset download** — a daemon thread starts `download_datasets()`, which
+   fetches any missing IMDB TSV files from `datasets.imdbws.com`. The server is fully
+   responsive during this download; the thread's state is exposed via the
+   `datasets_downloading` flag on `GET /status`.
+
+The server is ready to handle requests immediately after step 1, even while datasets are
+still downloading.
 
 ## Key Design Decisions
 
@@ -167,7 +190,7 @@ subsystems: []         # e.g. [backend, frontend]
 6. **Execute** — Implement per the `## Fix` steps and acceptance criteria
 7. **Post-conditions** — Run any `## Post-conditions` checks
 8. **Test** — Run the `## Tests` section commands
-9. **Commit** — Use the exact `## Commit Message` from the subtask file
+9. **Commit** — Run `git add` and `git commit` directly using the exact `## Commit Message` from the subtask file. Do NOT ask the user for confirmation before running these commands — the protocol defines what to commit.
 10. **Update status** — Update status in three places:
     - Subtask file frontmatter: `status: Done`
     - `tickets/NNN-slug/PROGRESS.md`: Status column → `Done`
