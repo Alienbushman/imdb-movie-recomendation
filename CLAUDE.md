@@ -146,8 +146,8 @@ Read `tickets/index.yaml` for the full machine-readable index with all subtask s
 | 009 | Find similar movies | **Done** |
 | 010 | Frontend component modularization | **Done** |
 | 011 | Browse by director or actor | **Done** |
-| 012 | Improve startup process | Open |
-| 013 | Clean clone smoke test + Docker fix | Open |
+| 012 | Improve startup process | **Done** |
+| 013 | Clean clone smoke test + Docker fix | **Done** |
 | 014 | Documentation audit | **Done** |
 
 ### Ticket File Format

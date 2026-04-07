@@ -2,7 +2,10 @@ import csv
 import io
 import json
 import logging
+import os
 import re
+import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -13,6 +16,8 @@ logger = logging.getLogger(__name__)
 _USER_ID_PATTERN = re.compile(r"ur\d+")
 
 _PLAYWRIGHT_ARGS = ["--disable-blink-features=AutomationControlled"]
+# Extra flags required in Docker (no hardware GPU, /dev/shm is limited)
+_DOCKER_EXTRA_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -24,6 +29,36 @@ _WEBDRIVER_PATCH = (
 
 # Delay between page navigations to avoid IMDB rate-limiting.
 _PAGE_DELAY = 1.5  # seconds
+
+# ── Docker / Xvfb helpers ────────────────────────────────────────────────────
+
+_xvfb_proc: subprocess.Popen | None = None
+_xvfb_lock = threading.Lock()
+
+
+def _running_in_docker() -> bool:
+    """Return True when the process is running inside a Docker container."""
+    return os.path.exists("/.dockerenv")
+
+
+def _start_xvfb_if_needed() -> None:
+    """Start a virtual X display on :99 if not already running.
+
+    Required in Docker where no physical display is available.
+    Xvfb must be installed in the image (apt-get install xvfb).
+    """
+    global _xvfb_proc
+    with _xvfb_lock:
+        if _xvfb_proc is not None and _xvfb_proc.poll() is None:
+            return  # already running
+        logger.info("Starting Xvfb virtual display :99 for Playwright")
+        _xvfb_proc = subprocess.Popen(
+            ["Xvfb", ":99", "-screen", "0", "1280x720x24"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(1)  # give Xvfb time to initialise
+        os.environ["DISPLAY"] = ":99"
 
 
 def _extract_user_id(imdb_url: str) -> str:
@@ -238,12 +273,25 @@ def fetch_imdb_ratings_csv(imdb_url: str, timeout: float = 120.0) -> str:
 
     all_rows: list[dict] = []
 
+    if _running_in_docker():
+        _start_xvfb_if_needed()
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=False,
-            channel="chrome",
-            args=_PLAYWRIGHT_ARGS,
-        )
+        if _running_in_docker():
+            # Inside Docker: use Playwright's bundled Chromium with a virtual display.
+            # channel="chrome" requires system-installed Google Chrome which is absent.
+            # Xvfb provides the X11 display required for headless=False.
+            browser = p.chromium.launch(
+                headless=False,
+                args=_PLAYWRIGHT_ARGS + _DOCKER_EXTRA_ARGS,
+            )
+        else:
+            # Local dev: use system Chrome for the best WAF bypass.
+            browser = p.chromium.launch(
+                headless=False,
+                channel="chrome",
+                args=_PLAYWRIGHT_ARGS,
+            )
         try:
             context = browser.new_context(user_agent=_USER_AGENT)
             page = context.new_page()

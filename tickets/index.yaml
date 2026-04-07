@@ -160,15 +160,15 @@ tickets:
 
   - id: "013"
     title: "Clean Clone Smoke Test + Docker Fix"
-    status: open
+    status: done
     priority: high
     component: full_stack
     subtask_dir: 013-clean-clone-smoke-test
     subtasks:
-      - { id: ST-001, title: "Clone + Docker Build",          status: open, effort: low,    depends_on: [] }
-      - { id: ST-002, title: "First Startup + Health Check",  status: open, effort: low,    depends_on: [ST-001] }
-      - { id: ST-003, title: "End-to-End IMDB URL Test",      status: open, effort: medium, depends_on: [ST-002] }
-      - { id: ST-004, title: "Fix Breaking Changes",          status: open, effort: high,   depends_on: [ST-003] }
+      - { id: ST-001, title: "Clone + Docker Build",          status: done, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "First Startup + Health Check",  status: done, effort: low,    depends_on: [ST-001] }
+      - { id: ST-003, title: "End-to-End IMDB URL Test",      status: done, effort: medium, depends_on: [ST-002] }
+      - { id: ST-004, title: "Fix Breaking Changes",          status: done, effort: high,   depends_on: [ST-003] }
 
   - id: "014"
     title: "Documentation Audit"
