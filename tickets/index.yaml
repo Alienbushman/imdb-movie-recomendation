@@ -172,12 +172,12 @@ tickets:
 
   - id: "014"
     title: "Documentation Audit"
-    status: in_progress
+    status: done
     priority: medium
     component: docs
     subtask_dir: 014-documentation-audit
     subtasks:
-      - { id: ST-001, title: "Fix CLAUDE.md: endpoint table + architecture list", status: done,        effort: low, depends_on: [] }
-      - { id: ST-002, title: "Rewrite frontend/README.md",                        status: done,        effort: low, depends_on: [] }
-      - { id: ST-003, title: "Add module-level docstrings to services",            status: done,        effort: low, depends_on: [] }
-      - { id: ST-004, title: "Document startup sequence and dataset files",        status: in_progress, effort: low, depends_on: [ST-001] }
+      - { id: ST-001, title: "Fix CLAUDE.md: endpoint table + architecture list", status: done, effort: low, depends_on: [] }
+      - { id: ST-002, title: "Rewrite frontend/README.md",                        status: done, effort: low, depends_on: [] }
+      - { id: ST-003, title: "Add module-level docstrings to services",            status: done, effort: low, depends_on: [] }
+      - { id: ST-004, title: "Document startup sequence and dataset files",        status: done, effort: low, depends_on: [ST-001] }
