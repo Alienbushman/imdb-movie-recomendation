@@ -190,10 +190,10 @@ tickets:
     subtask_dir: 015-code-quality-and-correctness
     subtasks:
       - { id: ST-001, title: "Fix writer taste features (always zero)",              status: done, effort: medium, depends_on: [] }
-      - { id: ST-002, title: "Align min_vote_count code default with config",        status: in_progress, effort: low,    depends_on: [] }
-      - { id: ST-003, title: "Add unit tests for candidates.py",                     status: open, effort: high,   depends_on: [ST-001] }
-      - { id: ST-004, title: "CORS allowed origins via env var",                     status: open, effort: low,    depends_on: [] }
-      - { id: ST-005, title: "Assert feature completeness in feature_vector_to_array", status: open, effort: low,  depends_on: [] }
+      - { id: ST-002, title: "Align min_vote_count code default with config",        status: done, effort: low,    depends_on: [] }
+      - { id: ST-003, title: "Add unit tests for candidates.py",                     status: in_progress, effort: high,   depends_on: [ST-001] }
+      - { id: ST-004, title: "CORS allowed origins via env var",                     status: done, effort: low,    depends_on: [] }
+      - { id: ST-005, title: "Assert feature completeness in feature_vector_to_array", status: done, effort: low,  depends_on: [] }
 
   - id: "016"
     title: "Search and Browse Index Gaps"
