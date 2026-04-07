@@ -149,6 +149,8 @@ Read `tickets/index.yaml` for the full machine-readable index with all subtask s
 | 012 | Improve startup process | **Done** |
 | 013 | Clean clone smoke test + Docker fix | **Done** |
 | 014 | Documentation audit | **Done** |
+| 015 | Code quality and correctness fixes | **Done** |
+| 016 | Search and browse index gaps | **Open** |
 
 ### Ticket File Format
 
@@ -190,12 +192,12 @@ subsystems: []         # e.g. [backend, frontend]
 6. **Execute** — Implement per the `## Fix` steps and acceptance criteria
 7. **Post-conditions** — Run any `## Post-conditions` checks
 8. **Test** — Run the `## Tests` section commands
-9. **Commit** — Run `git add` and `git commit` directly using the exact `## Commit Message` from the subtask file. Do NOT ask the user for confirmation before running these commands — the protocol defines what to commit.
-10. **Update status** — Update status in three places:
+9. **Update status** — Update status in three places (do NOT commit yet):
     - Subtask file frontmatter: `status: Done`
     - `tickets/NNN-slug/PROGRESS.md`: Status column → `Done`
     - `tickets/index.yaml`: subtask status → `done`; ticket status → `done` if all subtasks done
-11. **Record decisions** — Log non-obvious choices in `tickets/NNN-slug/decisions.md`
+10. **Record decisions** — Log non-obvious choices in `tickets/NNN-slug/decisions.md`
+11. **Commit (ticket end only)** — After all subtasks are done, stage all changed files across all subtasks (plus `index.yaml` and `PROGRESS.md`) and create a single commit. Do NOT ask for confirmation before committing.
 
 ## Linting
 

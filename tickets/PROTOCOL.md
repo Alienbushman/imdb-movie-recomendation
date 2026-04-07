@@ -49,8 +49,9 @@ If any check is already failing, stop and report — do not proceed on a broken 
 
 - Work on exactly **one ticket** per session — do not jump across tickets
 - Within that ticket, complete as many subtasks as possible in PROGRESS.md row order (respecting dependencies)
-- After each subtask: commit, update PROGRESS.md, then continue to the next eligible subtask
+- After each subtask: update PROGRESS.md and `index.yaml` status, then continue to the next eligible subtask — **do not commit between subtasks**
 - Stop when all subtasks in the ticket are `Done`, or when no remaining subtask has its dependencies met
+- **Commit once at the end** — after all subtasks are complete — see **Commit Protocol** below
 
 ---
 
@@ -98,15 +99,21 @@ If any step fails:
 
 ## Commit Protocol
 
-Each subtask file has a `## Commit Message` section. Use that exact string:
+Commit **once per ticket** — after all subtasks are complete, not after each subtask.
 
 ```bash
-# Stage only the files listed in "## Files Changed"
-git add app/services/example.py
+# Stage all files changed across all subtasks (union of every subtask's "## Files Changed" list,
+# plus tickets/index.yaml and tickets/<ticket-folder>/PROGRESS.md)
+git add app/services/example.py tickets/index.yaml tickets/NNN-slug/PROGRESS.md
 
-# Commit with the exact message from the subtask
+# Write a single commit message that summarises the whole ticket.
+# Use the commit messages from individual subtasks as the body if helpful.
 git commit -m "$(cat <<'EOF'
-<paste exact message from subtask>
+<ticket-level summary line>
+
+- ST-001: <subtask commit message>
+- ST-002: <subtask commit message>
+...
 
 Co-Authored-By: Claude <model> <noreply@anthropic.com>
 EOF
@@ -119,23 +126,21 @@ git log --oneline -3
 - Never use `git add -A` or `git add .`
 - Always create new commits — never amend
 - Never push unless the user explicitly says to
+- Run `git add` and `git commit` directly — do NOT ask the user for confirmation before committing
 
 ---
 
 ## PROGRESS.md Update
 
-After committing:
+After completing each subtask (before moving to the next one):
 
 1. In `index.yaml`: set the completed subtask status to `done`
 2. In `index.yaml`: set the next eligible subtask status to `in_progress` (or leave the ticket `in_progress` if no more subtasks are ready)
 3. In the ticket's `PROGRESS.md`: change the subtask status to `Done`, add the date and any notes, update the completion counter
-4. Commit:
-   ```bash
-   git add tickets/index.yaml tickets/<ticket-folder>/PROGRESS.md
-   git commit -m "chore: mark <ST-NNN> done in PROGRESS.md"
-   ```
 
-Then continue to the next eligible subtask in the same ticket (see **One Ticket Per Session** above). When the ticket is complete, set the ticket status to `done` in `index.yaml`, then **always** run the Docker rebuild + verification step below before finishing.
+**Do not commit yet.** These file edits will be included in the single ticket-end commit.
+
+When the ticket is complete, set the ticket status to `done` in `index.yaml`, then commit (see **Commit Protocol** above), then **always** run the Docker rebuild + verification step below before finishing.
 
 ---
 
