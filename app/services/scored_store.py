@@ -1,3 +1,20 @@
+"""SQLite-backed store for LightGBM-scored candidates.
+
+After each pipeline run, all scored candidates are written to
+``data/cache/scored_candidates.db``. GET recommendation endpoints query this
+database instead of holding all candidates in memory, keeping post-pipeline
+RAM under ~500 MB.
+
+The database also serves person-browse and title-search queries; it stores a
+``persons`` table alongside the ``candidates`` table for efficient lookups.
+
+Key functions:
+- ``write_candidates`` — bulk-insert or replace all scored rows after a pipeline run
+- ``query_candidates`` — paginated, filtered query for the recommendation endpoints
+- ``search_titles`` — full-text search for the /search endpoint
+- ``search_people`` / ``get_person`` / ``query_titles_by_person`` — person-browse support
+- ``has_scored_results`` — fast check used by the startup fast-path
+"""
 import json
 import logging
 import sqlite3

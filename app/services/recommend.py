@@ -1,3 +1,19 @@
+"""Scoring, filtering, ranking, and explanation generation for recommendations.
+
+Takes a trained LightGBM model and a list of candidate titles, predicts a score
+for each, applies runtime filters, and returns ranked results with human-readable
+explanations.
+
+Key functions:
+- ``score_candidates`` — batch-predict scores for all candidates using the model
+- ``filter_candidates`` — apply scalar filters (min votes, year, rating) from config
+- ``build_recommendations`` — convert scored candidates into ``Recommendation`` objects
+  with explanation strings (genre matches, director affinity, etc.)
+- ``get_recommendations`` — top-level orchestrator called by the pipeline
+
+Results are persisted to SQLite by ``scored_store.write_candidates`` immediately after
+scoring; GET endpoints query the DB directly and do not call this module at serve time.
+"""
 import logging
 import time
 

@@ -1,3 +1,28 @@
+"""IMDB bulk dataset loading, filtering, and candidate cache management.
+
+Downloads, parses, and merges the six IMDB TSV files into a list of
+``CandidateTitle`` objects representing unseen titles eligible for scoring.
+The merged result is cached to ``data/cache/imdb_candidates.json`` to avoid
+reprocessing ~1 GB of data on every pipeline run.
+
+IMDB dataset files (stored in ``data/datasets/``):
+- ``title.basics.tsv.gz``      — title metadata: type, year, runtime, genres
+- ``title.ratings.tsv.gz``     — IMDB vote count and average rating
+- ``title.principals.tsv.gz``  — cast/crew associations per title
+- ``name.basics.tsv.gz``       — person names for principal lookup
+- ``title.akas.tsv.gz``        — alternate titles/regions (used for language inference)
+- ``title.crew.tsv.gz``        — director and writer IDs per title
+
+Cache invalidation: delete ``data/cache/imdb_candidates.json`` after any change
+that adds or renames fields on ``CandidateTitle``. The cache is not self-invalidating;
+``invalidate_stale_cache()`` checks for a known set of required fields and deletes
+the cache automatically if they are missing (called at server startup).
+
+Key functions:
+- ``download_datasets`` — fetch all six TSV files from datasets.imdbws.com
+- ``load_candidates`` — load from cache or rebuild from raw TSVs
+- ``invalidate_stale_cache`` — delete cache if schema is outdated
+"""
 import gc
 import json
 import logging

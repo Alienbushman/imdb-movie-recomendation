@@ -1,3 +1,24 @@
+"""Feature engineering for the LightGBM taste model.
+
+Converts a ``CandidateTitle`` or ``RatedTitle`` into a flat ``FeatureVector``
+dataclass, then serialises it into a numpy array for training and inference.
+
+Feature categories (~100+ total):
+- Genre affinity (23 flags) — fraction of user's rated titles that share each genre
+- Genre interaction pairs (N) — product of two affinity scores for common genre combos
+- Director / actor taste (4) — mean and count of user's ratings for a title's crew
+- Writer taste (4) — same as director/actor but for credited writers
+- Composer / cinematographer taste (4) — same for below-the-line crew
+- Language affinity (14 flags) — fraction of rated titles matching each language
+- Title-type flags (4) — movie, short, tvSeries, tvMiniSeries
+- Popularity / age (3) — log vote count, title age in years, IMDB average rating
+- TMDB keyword affinity (3) — optional; zero-filled when TMDB_API_KEY is absent
+- OMDb critic scores (4) — optional; zero-filled when OMDB_API_KEY is absent
+
+IMPORTANT: ``feature_vector_to_array()`` must produce columns in the exact same
+order for both training (``features_to_dataframe``) and inference. Adding a new
+field requires updating both functions and retraining the model.
+"""
 import logging
 import math
 from collections import Counter, defaultdict
