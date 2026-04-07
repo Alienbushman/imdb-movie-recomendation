@@ -181,3 +181,26 @@ tickets:
       - { id: ST-002, title: "Rewrite frontend/README.md",                        status: done, effort: low, depends_on: [] }
       - { id: ST-003, title: "Add module-level docstrings to services",            status: done, effort: low, depends_on: [] }
       - { id: ST-004, title: "Document startup sequence and dataset files",        status: done, effort: low, depends_on: [ST-001] }
+
+  - id: "015"
+    title: "Code Quality and Correctness Fixes"
+    status: in_progress
+    priority: medium
+    component: backend
+    subtask_dir: 015-code-quality-and-correctness
+    subtasks:
+      - { id: ST-001, title: "Fix writer taste features (always zero)",              status: done, effort: medium, depends_on: [] }
+      - { id: ST-002, title: "Align min_vote_count code default with config",        status: in_progress, effort: low,    depends_on: [] }
+      - { id: ST-003, title: "Add unit tests for candidates.py",                     status: open, effort: high,   depends_on: [ST-001] }
+      - { id: ST-004, title: "CORS allowed origins via env var",                     status: open, effort: low,    depends_on: [] }
+      - { id: ST-005, title: "Assert feature completeness in feature_vector_to_array", status: open, effort: low,  depends_on: [] }
+
+  - id: "016"
+    title: "Search and Browse Index Gaps"
+    status: open
+    priority: high
+    component: backend
+    subtask_dir: 016-search-index-gaps
+    subtasks:
+      - { id: ST-001, title: "Index directors from rated titles in people table",  status: open, effort: low, depends_on: [] }
+      - { id: ST-002, title: "Persist rated titles to SQLite for durable search",  status: open, effort: low, depends_on: [] }
