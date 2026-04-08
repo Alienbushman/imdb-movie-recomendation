@@ -218,7 +218,7 @@ def search_titles_endpoint(
             title=row["title"],
             year=row["year"],
             title_type=row["title_type"],
-            is_rated=False,
+            is_rated=bool(row["is_rated"]),
         )
 
     # 2. Search rated titles (if pipeline has been run)

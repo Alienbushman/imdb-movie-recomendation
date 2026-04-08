@@ -197,10 +197,22 @@ tickets:
 
   - id: "016"
     title: "Search and Browse Index Gaps"
-    status: open
+    status: done
     priority: high
     component: backend
     subtask_dir: 016-search-index-gaps
     subtasks:
-      - { id: ST-001, title: "Index directors from rated titles in people table",  status: open, effort: low, depends_on: [] }
-      - { id: ST-002, title: "Persist rated titles to SQLite for durable search",  status: open, effort: low, depends_on: [] }
+      - { id: ST-001, title: "Index directors from rated titles in people table",  status: done, effort: low, depends_on: [] }
+      - { id: ST-002, title: "Persist rated titles to SQLite for durable search",  status: done, effort: low, depends_on: [] }
+
+  - id: "017"
+    title: "Card Popup Navigation: Find Similar + Click Person"
+    status: done
+    priority: medium
+    component: frontend
+    subtask_dir: 017-card-popup-navigation
+    subtasks:
+      - { id: ST-001, title: "Similar page deep-link support",                status: done, effort: low, depends_on: [] }
+      - { id: ST-002, title: "Person page deep-link support",                 status: done, effort: low, depends_on: [] }
+      - { id: ST-003, title: "Find Similar button in card popup",             status: done, effort: low, depends_on: [ST-001] }
+      - { id: ST-004, title: "Clickable director/actor chips in card popup",  status: done, effort: low, depends_on: [ST-002] }

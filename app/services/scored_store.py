@@ -96,6 +96,14 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_title_people_imdb_id ON title_people (imdb_id)"
     )
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rated_titles (
+            imdb_id    TEXT PRIMARY KEY,
+            title      TEXT NOT NULL,
+            year       INTEGER,
+            title_type TEXT NOT NULL
+        )
+    """)
     conn.commit()
 
 
@@ -275,9 +283,11 @@ def query_all_candidates_lightweight(
 
 
 def search_titles(query: str, limit: int = 20) -> list[dict]:
-    """Search scored_candidates by title substring (case-insensitive).
+    """Search scored_candidates and rated_titles by title substring (case-insensitive).
 
-    Returns dicts with keys: imdb_id, title, year, title_type.
+    Returns dicts with keys: imdb_id, title, year, title_type, is_rated.
+    Rated titles are sorted first; within each group, results are ordered by
+    vote count descending (num_votes is 0 for rated_titles rows).
     """
     db = _db_path()
     if not db.exists():
@@ -285,11 +295,18 @@ def search_titles(query: str, limit: int = 20) -> list[dict]:
     conn = _connect()
     try:
         rows = conn.execute(
-            "SELECT imdb_id, title, year, title_type FROM scored_candidates "
-            "WHERE title LIKE ? COLLATE NOCASE "
-            "ORDER BY num_votes DESC "
-            "LIMIT ?",
-            (f"%{query}%", limit),
+            """
+            SELECT imdb_id, title, year, title_type, 1 AS is_rated, 0 AS num_votes
+            FROM rated_titles
+            WHERE title LIKE ? COLLATE NOCASE
+            UNION
+            SELECT imdb_id, title, year, title_type, 0 AS is_rated, num_votes
+            FROM scored_candidates
+            WHERE title LIKE ? COLLATE NOCASE
+            ORDER BY is_rated DESC, num_votes DESC
+            LIMIT ?
+            """,
+            (f"%{query}%", f"%{query}%", limit),
         ).fetchall()
         return [dict(r) for r in rows]
     except sqlite3.OperationalError:
@@ -529,6 +546,27 @@ def write_people(
         logger.info(
             "Saved %d people and %d title-person rows", len(people), len(title_people)
         )
+    finally:
+        conn.close()
+
+
+def write_rated_titles(titles: list) -> None:
+    """Persist the user's rated titles to SQLite for durable title search.
+
+    Clears and repopulates on every pipeline run so the table always reflects
+    the current watchlist. Titles are searchable across server restarts without
+    requiring a full pipeline re-run.
+    """
+    conn = _connect()
+    try:
+        _ensure_schema(conn)
+        conn.execute("DELETE FROM rated_titles")
+        conn.executemany(
+            "INSERT INTO rated_titles (imdb_id, title, year, title_type) VALUES (?,?,?,?)",
+            [(t.imdb_id, t.title, t.year, t.title_type) for t in titles],
+        )
+        conn.commit()
+        logger.info("Saved %d rated titles to rated_titles table", len(titles))
     finally:
         conn.close()
 

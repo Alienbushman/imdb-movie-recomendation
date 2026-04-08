@@ -146,10 +146,11 @@ def run_pipeline(
         )
 
         # Persist all scored candidates to SQLite for subsequent GET requests
-        from app.services.scored_store import save_scored, write_people
+        from app.services.scored_store import save_scored, write_people, write_rated_titles
 
         scored_candidates = [(c, s) for c, _, s in scored]
         save_scored(scored_candidates)
+        write_rated_titles(titles)
 
         # Populate people and title_people tables for the person browse feature
         people_map: dict[str, dict] = {}
@@ -169,6 +170,18 @@ def run_pipeline(
                     title_people_rows.append(
                         {"imdb_id": candidate.imdb_id, "name_id": name_id, "role": role}
                     )
+        # Also index directors from rated titles so directors of well-known (already-rated)
+        # films still appear in person search. RatedTitle.directors is always populated
+        # from the IMDB CSV export, so no candidates.py changes are needed.
+        for rated in titles:
+            for name in rated.directors:
+                name_id = name.lower()
+                if name_id not in people_map:
+                    people_map[name_id] = {"name_id": name_id, "name": name}
+                title_people_rows.append(
+                    {"imdb_id": rated.imdb_id, "name_id": name_id, "role": "director"}
+                )
+
         write_people(list(people_map.values()), title_people_rows)
 
         # Cache lightweight state only — large collections are in scored_candidates.db
