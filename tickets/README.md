@@ -1,7 +1,3 @@
-# Sample of the website
-![alt text](image.png)
-
---- 
 # Tickets — Agent-Executable Task System
 
 This folder contains all work items for the IMDB Movie Recommendation project. Each ticket

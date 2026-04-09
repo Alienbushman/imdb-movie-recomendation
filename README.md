@@ -1,5 +1,7 @@
 # IMDB Movie Recommendation Engine
 
+![Screenshot](image.png)
+
 Personalized movie, series, and anime recommendations based on your IMDB rating history. Uses a LightGBM taste model trained on your ratings, with candidates sourced from IMDB's public bulk datasets. Includes a Nuxt 4 + Vuetify 4 web frontend.
 
 ## Running with Docker (recommended)
