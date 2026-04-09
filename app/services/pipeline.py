@@ -170,17 +170,30 @@ def run_pipeline(
                     title_people_rows.append(
                         {"imdb_id": candidate.imdb_id, "name_id": name_id, "role": role}
                     )
-        # Also index directors from rated titles so directors of well-known (already-rated)
-        # films still appear in person search. RatedTitle.directors is always populated
-        # from the IMDB CSV export, so no candidates.py changes are needed.
+        # Index all crew roles from rated titles so person search finds actors/writers/etc.
+        # directors and writers come from the IMDB CSV (always available).
+        # actors/composers/cinematographers come from the dataset build (None on cache hits).
         for rated in titles:
-            for name in rated.directors:
-                name_id = name.lower()
-                if name_id not in people_map:
-                    people_map[name_id] = {"name_id": name_id, "name": name}
-                title_people_rows.append(
-                    {"imdb_id": rated.imdb_id, "name_id": name_id, "role": "director"}
+            rated_role_lists: list[tuple[str, list[str]]] = [
+                ("director", rated.directors),
+                ("writer", rated.writers),
+            ]
+            if rated_actors is not None:
+                rated_role_lists.append(("actor", rated_actors.get(rated.imdb_id, [])))
+            if rated_composers is not None:
+                rated_role_lists.append(("composer", rated_composers.get(rated.imdb_id, [])))
+            if rated_cinematographers is not None:
+                rated_role_lists.append(
+                    ("cinematographer", rated_cinematographers.get(rated.imdb_id, []))
                 )
+            for role, names in rated_role_lists:
+                for name in names:
+                    name_id = name.lower()
+                    if name_id not in people_map:
+                        people_map[name_id] = {"name_id": name_id, "name": name}
+                    title_people_rows.append(
+                        {"imdb_id": rated.imdb_id, "name_id": name_id, "role": role}
+                    )
 
         write_people(list(people_map.values()), title_people_rows)
 

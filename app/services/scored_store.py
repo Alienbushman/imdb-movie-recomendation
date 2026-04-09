@@ -98,12 +98,31 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     )
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rated_titles (
-            imdb_id    TEXT PRIMARY KEY,
-            title      TEXT NOT NULL,
-            year       INTEGER,
-            title_type TEXT NOT NULL
+            imdb_id      TEXT PRIMARY KEY,
+            title        TEXT NOT NULL,
+            year         INTEGER,
+            title_type   TEXT NOT NULL,
+            imdb_rating  REAL,
+            num_votes    INTEGER NOT NULL DEFAULT 0,
+            runtime_mins INTEGER,
+            genres       TEXT NOT NULL DEFAULT '[]',
+            languages    TEXT NOT NULL DEFAULT '[]',
+            user_rating  REAL
         )
     """)
+    # Additive migration for existing databases that only have the 4-column schema
+    for col, ddl in [
+        ("imdb_rating",  "REAL"),
+        ("num_votes",    "INTEGER NOT NULL DEFAULT 0"),
+        ("runtime_mins", "INTEGER"),
+        ("genres",       "TEXT NOT NULL DEFAULT '[]'"),
+        ("languages",    "TEXT NOT NULL DEFAULT '[]'"),
+        ("user_rating",  "REAL"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE rated_titles ADD COLUMN {col} {ddl}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
 
 
@@ -456,9 +475,10 @@ def query_titles_by_person(
     max_runtime: int | None = None,
     dismissed_ids: set[str] | None = None,
 ) -> tuple[int, list[dict]]:
-    """Return (total_count, rows) for scored titles featuring name_id.
+    """Return (total_count, rows) for titles featuring name_id.
 
-    Rows include all scored_candidates columns plus a `roles_csv` string.
+    UNIONs scored candidates (unrated) with rated titles so both appear.
+    Rows include display columns plus `roles_csv` and `is_rated`.
     Results are ordered by predicted_score DESC.
     """
     db = _db_path()
@@ -466,47 +486,79 @@ def query_titles_by_person(
         return 0, []
     conn = _connect()
     try:
-        params: list = [name_id]
-        where = ["tp.name_id = ?"]
+        # Build filter fragments for each UNION branch
+        sc_where: list[str] = ["tp.name_id = ?"]
+        sc_params: list = [name_id]
+        rt_where: list[str] = ["tp.name_id = ?"]
+        rt_params: list = [name_id]
 
         if min_year is not None:
-            where.append("sc.year >= ?")
-            params.append(min_year)
+            sc_where.append("sc.year >= ?")
+            sc_params.append(min_year)
+            rt_where.append("rt.year >= ?")
+            rt_params.append(min_year)
         if max_year is not None:
-            where.append("sc.year <= ?")
-            params.append(max_year)
+            sc_where.append("sc.year <= ?")
+            sc_params.append(max_year)
+            rt_where.append("rt.year <= ?")
+            rt_params.append(max_year)
         if min_rating is not None:
-            where.append("sc.imdb_rating >= ?")
-            params.append(min_rating)
+            sc_where.append("sc.imdb_rating >= ?")
+            sc_params.append(min_rating)
+            rt_where.append("rt.imdb_rating >= ?")
+            rt_params.append(min_rating)
         if min_votes is not None:
-            where.append("sc.num_votes >= ?")
-            params.append(min_votes)
+            sc_where.append("sc.num_votes >= ?")
+            sc_params.append(min_votes)
+            rt_where.append("rt.num_votes >= ?")
+            rt_params.append(min_votes)
         if max_runtime is not None:
-            where.append("(sc.runtime_mins IS NULL OR sc.runtime_mins <= ?)")
-            params.append(max_runtime)
+            sc_where.append("(sc.runtime_mins IS NULL OR sc.runtime_mins <= ?)")
+            sc_params.append(max_runtime)
+            rt_where.append("(rt.runtime_mins IS NULL OR rt.runtime_mins <= ?)")
+            rt_params.append(max_runtime)
         if dismissed_ids and len(dismissed_ids) <= 500:
             d_ph = ",".join("?" * len(dismissed_ids))
-            where.append(f"sc.imdb_id NOT IN ({d_ph})")
-            params.extend(sorted(dismissed_ids))
+            sc_where.append(f"sc.imdb_id NOT IN ({d_ph})")
+            sc_params.extend(sorted(dismissed_ids))
+            # Rated titles are in the user's watchlist — they are never dismissed
 
-        where_clause = " AND ".join(where)
-        base_sql = (
-            "FROM scored_candidates sc "
-            "JOIN title_people tp ON tp.imdb_id = sc.imdb_id "
-            f"WHERE {where_clause}"
-        )
+        sc_where_clause = " AND ".join(sc_where)
+        rt_where_clause = " AND ".join(rt_where)
+
+        union_sql = f"""
+            SELECT sc.imdb_id, sc.title, sc.year, sc.title_type,
+                   sc.imdb_rating, sc.num_votes, sc.runtime_mins,
+                   sc.genres, sc.languages,
+                   sc.predicted_score, 0 AS is_rated,
+                   GROUP_CONCAT(DISTINCT tp.role) AS roles_csv
+            FROM scored_candidates sc
+            JOIN title_people tp ON tp.imdb_id = sc.imdb_id
+            WHERE {sc_where_clause}
+            GROUP BY sc.imdb_id
+
+            UNION ALL
+
+            SELECT rt.imdb_id, rt.title, rt.year, rt.title_type,
+                   rt.imdb_rating, rt.num_votes, rt.runtime_mins,
+                   rt.genres, rt.languages,
+                   rt.user_rating AS predicted_score, 1 AS is_rated,
+                   GROUP_CONCAT(DISTINCT tp.role) AS roles_csv
+            FROM rated_titles rt
+            JOIN title_people tp ON tp.imdb_id = rt.imdb_id
+            WHERE {rt_where_clause}
+            GROUP BY rt.imdb_id
+        """
+        all_params = sc_params + rt_params
 
         total_row = conn.execute(
-            f"SELECT COUNT(DISTINCT sc.imdb_id) {base_sql}", params
+            f"SELECT COUNT(*) FROM ({union_sql})", all_params
         ).fetchone()
         total = total_row[0] if total_row else 0
 
         rows = conn.execute(
-            f"SELECT sc.*, GROUP_CONCAT(DISTINCT tp.role) AS roles_csv {base_sql} "
-            "GROUP BY sc.imdb_id "
-            "ORDER BY sc.predicted_score DESC "
-            "LIMIT ?",
-            params + [limit],
+            f"SELECT * FROM ({union_sql}) ORDER BY predicted_score DESC LIMIT ?",
+            all_params + [limit],
         ).fetchall()
     except sqlite3.OperationalError:
         return 0, []
@@ -562,8 +614,25 @@ def write_rated_titles(titles: list) -> None:
         _ensure_schema(conn)
         conn.execute("DELETE FROM rated_titles")
         conn.executemany(
-            "INSERT INTO rated_titles (imdb_id, title, year, title_type) VALUES (?,?,?,?)",
-            [(t.imdb_id, t.title, t.year, t.title_type) for t in titles],
+            "INSERT INTO rated_titles "
+            "(imdb_id, title, year, title_type, imdb_rating, num_votes, runtime_mins, "
+            "genres, languages, user_rating) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            [
+                (
+                    t.imdb_id,
+                    t.title,
+                    t.year,
+                    t.title_type,
+                    t.imdb_rating,
+                    t.num_votes,
+                    t.runtime_mins,
+                    json.dumps(t.genres),
+                    json.dumps([t.language] if t.language else []),
+                    float(t.user_rating),
+                )
+                for t in titles
+            ],
         )
         conn.commit()
         logger.info("Saved %d rated titles to rated_titles table", len(titles))

@@ -26,6 +26,9 @@ function onPersonSelected(selected: PersonSearchResult | null) {
 // Role filter
 const roleFilter = ref<'any' | 'director' | 'actor' | 'writer'>('any')
 
+// Seen filter
+const seenFilter = ref<'all' | 'unseen' | 'seen'>('all')
+
 // Sort
 const sortBy = ref<keyof PersonTitleResult>('predicted_score')
 const sortOptions = [
@@ -37,6 +40,11 @@ const sortOptions = [
 
 const filteredResults = computed<PersonTitleResult[]>(() => {
   let results = person.personResults?.results ?? []
+  if (seenFilter.value === 'unseen') {
+    results = results.filter(r => !r.is_rated)
+  } else if (seenFilter.value === 'seen') {
+    results = results.filter(r => r.is_rated)
+  }
   if (roleFilter.value !== 'any') {
     results = results.filter(r => r.roles.includes(roleFilter.value))
   }
@@ -54,6 +62,22 @@ function handleIncludeLanguage(language: string) {
   filters.addSelectedLanguage(language)
   person.applyFilters()
 }
+
+// Deep-link support: if the page was opened with ?name_id=&name= (e.g. from a
+// clickable director/actor chip on a card popup), bootstrap the selection and
+// load titles immediately.
+onMounted(() => {
+  const route = useRoute()
+  const q = route.query
+  if (!person.selectedPerson && typeof q.name_id === 'string' && typeof q.name === 'string') {
+    person.selectPersonById({
+      name_id: q.name_id,
+      name: q.name,
+      primary_profession: null,
+      title_count: 0,
+    })
+  }
+})
 </script>
 
 <template>
@@ -115,6 +139,16 @@ function handleIncludeLanguage(language: string) {
           <v-btn value="director" size="small">Director</v-btn>
           <v-btn value="actor" size="small">Actor</v-btn>
           <v-btn value="writer" size="small">Writer</v-btn>
+        </v-btn-toggle>
+        <v-btn-toggle
+          v-model="seenFilter"
+          density="compact"
+          color="secondary"
+          mandatory
+        >
+          <v-btn value="all" size="small">All</v-btn>
+          <v-btn value="unseen" size="small">Unseen</v-btn>
+          <v-btn value="seen" size="small">Seen</v-btn>
         </v-btn-toggle>
         <v-select
           v-model="sortBy"

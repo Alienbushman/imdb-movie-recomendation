@@ -177,6 +177,10 @@ class PersonTitleResult(BaseModel):
     roles: list[str] = Field(
         description="The roles this person played on the title (e.g. ['director', 'writer'])."
     )
+    is_rated: bool = Field(
+        default=False,
+        description="True if this title is in the user's rated watchlist.",
+    )
 
 
 class PersonTitlesResponse(BaseModel):

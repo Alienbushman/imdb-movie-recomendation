@@ -175,6 +175,7 @@ def titles_by_person(
             predicted_score=row["predicted_score"],
             languages=json.loads(row["languages"] or "[]"),
             roles=row["roles_csv"].split(",") if row.get("roles_csv") else [],
+            is_rated=bool(row["is_rated"]),
         )
         for row in rows
     ]

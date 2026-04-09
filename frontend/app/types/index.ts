@@ -123,6 +123,7 @@ export interface PersonTitleResult {
   predicted_score: number
   languages: string[]
   roles: string[]
+  is_rated: boolean
 }
 
 export interface PersonTitlesResponse {
@@ -196,7 +197,7 @@ export function toPersonCardItem(person: PersonTitleResult): CardDisplayItem {
     display_explanations: [],
     score_label: `★ ${person.predicted_score.toFixed(1)}`,
     score_color: person.predicted_score >= 8 ? 'success' : person.predicted_score >= 7 ? 'warning' : 'error',
-    extra_badges: [],
+    extra_badges: person.is_rated ? [{ label: 'Seen', color: 'success' }] : [],
     roles: person.roles,
   }
 }
