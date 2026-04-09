@@ -11,7 +11,11 @@ from app.models.schemas import (
     RecommendationFilters,
     RecommendationResponse,
 )
-from app.services.candidates import download_datasets, load_candidates_from_datasets
+from app.services.candidates import (
+    download_datasets,
+    load_candidates_from_datasets,
+    load_crew_for_rated_titles,
+)
 from app.services.dismissed import get_dismissed_ids
 from app.services.ingest import get_seen_imdb_ids, load_watchlist
 from app.services.model import load_taste_model, train_taste_model
@@ -100,6 +104,14 @@ def run_pipeline(
             time.perf_counter() - t0,
             len(candidates),
         )
+
+        # On cache hits, rated_actors/composers/cinematographers are None.
+        # Load them separately so actors like Paul Newman get indexed in title_people.
+        if rated_actors is None:
+            logger.info("Step 2/4: Cache hit — loading crew for %d rated titles", len(titles))
+            rated_actors, rated_composers, rated_cinematographers = load_crew_for_rated_titles(
+                [t.imdb_id for t in titles]
+            )
 
         # Step 3: Train or load model
         logger.info("Step 3/4: Preparing taste model (retrain=%s)", retrain)

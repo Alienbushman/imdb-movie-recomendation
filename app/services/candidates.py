@@ -642,6 +642,54 @@ def _load_language_data(
 RatedPersonData = dict[str, list[str]] | None
 
 
+def load_crew_for_rated_titles(
+    rated_ids: list[str],
+) -> tuple[RatedPersonData, RatedPersonData, RatedPersonData]:
+    """Load actors, composers, and cinematographers for already-rated titles.
+
+    Called when the candidate cache is hit and load_candidates_from_datasets
+    returns None for the rated person dicts. Streams title.principals and
+    name.basics filtering only for the given rated title IDs, so it's much
+    faster than a full build.
+
+    Returns (rated_actors, rated_composers, rated_cinematographers), each a
+    dict of imdb_id → [name, ...], or None if principals data is unavailable.
+    """
+    if not rated_ids:
+        return None, None, None
+
+    settings = get_settings()
+    principals_path = PROJECT_ROOT / settings.imdb_datasets.title_principals
+    names_path = PROJECT_ROOT / settings.imdb_datasets.name_basics
+
+    if not principals_path.exists():
+        logger.warning(
+            "title.principals not found — actor crew for rated titles unavailable"
+        )
+        return None, None, None
+
+    rated_id_set = set(rated_ids)
+    principals_df = _collect_principal_rows(principals_path, rated_id_set)
+    if principals_df.empty:
+        return {}, {}, {}
+
+    nconsts = set(principals_df["nconst"].dropna().tolist())
+    if not nconsts or not names_path.exists():
+        return {}, {}, {}
+
+    name_lookup = _load_name_lookup_for_nconsts(names_path, nconsts)
+    actors_by_title, composers_by_title, cinematographers_by_title = _build_person_dicts(
+        principals_df, name_lookup
+    )
+    logger.info(
+        "Loaded rated-title crew: %d actors, %d composers, %d cinematographers",
+        len(actors_by_title),
+        len(composers_by_title),
+        len(cinematographers_by_title),
+    )
+    return actors_by_title, composers_by_title, cinematographers_by_title
+
+
 def load_candidates_from_datasets(
     seen_ids: set[str],
 ) -> tuple[list[CandidateTitle], RatedPersonData, RatedPersonData, RatedPersonData]:
