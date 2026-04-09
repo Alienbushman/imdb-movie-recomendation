@@ -645,6 +645,11 @@ def search_people(query: str, limit: int = 20) -> list[dict]:
 
     Returns dicts with keys: name_id, name, primary_profession, title_count.
     Only returns people who have at least one row in title_people.
+
+    Results are ordered by rated-title count (how many of this person's titles
+    appear in the user's watchlist) DESC, then by total title_count DESC. This
+    boosts familiar names — e.g. searching "paul" surfaces Paul Newman above
+    prolific but obscure crew members with higher total credits.
     """
     db = _db_path()
     if not db.exists():
@@ -653,12 +658,14 @@ def search_people(query: str, limit: int = 20) -> list[dict]:
     try:
         rows = conn.execute(
             "SELECT p.name_id, p.name, p.primary_profession, "
-            "COUNT(DISTINCT tp.imdb_id) AS title_count "
+            "COUNT(DISTINCT tp.imdb_id) AS title_count, "
+            "COUNT(DISTINCT rt.imdb_id) AS rated_count "
             "FROM people p "
             "JOIN title_people tp ON tp.name_id = p.name_id "
+            "LEFT JOIN rated_titles rt ON rt.imdb_id = tp.imdb_id "
             "WHERE p.name LIKE ? COLLATE NOCASE "
             "GROUP BY p.name_id "
-            "ORDER BY title_count DESC "
+            "ORDER BY rated_count DESC, title_count DESC "
             "LIMIT ?",
             (f"%{query}%", limit),
         ).fetchall()

@@ -210,6 +210,35 @@ def test_paul_newman_shows_up_in_people_search(isolated_db):
     assert results[0]["title_count"] == 1
 
 
+def test_people_search_boosts_rated_actors_over_prolific_unrated(isolated_db):
+    """Short-prefix searches must surface people from the user's watchlist.
+
+    Regression for the "search 'paul' doesn't find Paul Newman" bug: the old
+    ORDER BY title_count DESC pushed a rated actor with 36 credits below
+    unrated crew with 50+. The fix orders by rated_count DESC first so
+    watchlist actors win ties on short prefix queries.
+    """
+    # Paul Newman: 1 rated title (in the watchlist)
+    rated = [_make_rated("tt0061512", "Cool Hand Luke")]
+    rated_actors = {"tt0061512": ["Paul Newman"]}
+    write_rated_titles(rated)
+    _index_people_like_pipeline(rated, [], rated_actors=rated_actors)
+
+    # Paul Prolific: 0 rated titles, but 3 unrated candidate credits
+    candidates = [
+        (_make_candidate(f"tt900{i}", f"Obscure {i}", directors=["Paul Prolific"]), 6.0)
+        for i in range(3)
+    ]
+    save_scored(candidates)
+    _index_people_like_pipeline([], candidates)
+
+    results = search_people("paul")
+    names = [r["name"] for r in results]
+    assert "Paul Newman" in names, f"Paul Newman missing from search 'paul': {names}"
+    # Paul Newman (1 rated) must rank above Paul Prolific (0 rated, 3 total)
+    assert names.index("Paul Newman") < names.index("Paul Prolific")
+
+
 # ---------------------------------------------------------------------------
 # Mixed case — person appears in both rated and scored tables
 # ---------------------------------------------------------------------------
