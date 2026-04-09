@@ -85,7 +85,7 @@ export const useFiltersStore = defineStore('filters', () => {
     if (topNMovies.value != null) f.top_n_movies = topNMovies.value
     if (topNSeries.value != null) f.top_n_series = topNSeries.value
     if (topNAnime.value != null) f.top_n_anime = topNAnime.value
-    if (minVoteCount.value > FILTER_DEFAULTS.minVoteCount) f.min_vote_count = minVoteCount.value
+    if (minVoteCount.value > 0) f.min_vote_count = minVoteCount.value
 
     const result = Object.keys(f).length ? f : undefined
     console.log('[filters] buildFilters — result:', result)

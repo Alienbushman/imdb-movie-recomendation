@@ -216,3 +216,32 @@ tickets:
       - { id: ST-002, title: "Person page deep-link support",                 status: done, effort: low, depends_on: [] }
       - { id: ST-003, title: "Find Similar button in card popup",             status: done, effort: low, depends_on: [ST-001] }
       - { id: ST-004, title: "Clickable director/actor chips in card popup",  status: done, effort: low, depends_on: [ST-002] }
+
+  - id: "018"
+    title: "Person Browse Shows All Titles (Rated + Unrated)"
+    status: in_progress
+    priority: high
+    component: full_stack
+    subtask_dir: 018-person-browse-all-titles
+    subtasks:
+      - { id: ST-001, title: "Index actor/writer/composer crew from rated titles in title_people", status: done,        effort: low,    depends_on: [] }
+      - { id: ST-002, title: "Enrich rated_titles table and UNION into query_titles_by_person",   status: done,        effort: medium, depends_on: [ST-001] }
+      - { id: ST-003, title: "Frontend: seen/unseen toggle + seen badge on person browse",        status: in_progress, effort: low,    depends_on: [ST-002] }
+
+  - id: "019"
+    title: "Seen filter has no effect on Similar page"
+    status: done
+    priority: medium
+    component: frontend
+    subtask_dir: 019-seen-filter-no-effect
+    subtasks:
+      - { id: ST-001, title: "Wire seenFilter change into FilterDrawer's scheduleApply", status: done, effort: low, depends_on: [] }
+
+  - id: "020"
+    title: "min_vote_count default never sent on initial load"
+    status: done
+    priority: medium
+    component: frontend
+    subtask_dir: 020-min-voters-default-filter
+    subtasks:
+      - { id: ST-001, title: "Fix min_vote_count always sent when non-zero", status: done, effort: low, depends_on: [] }
