@@ -147,6 +147,13 @@ watch(
   { deep: true },
 )
 
+watch(
+  () => similar.seenFilter,
+  () => {
+    if (isSimilarPage.value) scheduleApply()
+  },
+)
+
 function resetAndApply() {
   filters.resetFilters()
   genreSearch.value = ''
@@ -430,7 +437,26 @@ const openPanels = ref(['genres', 'quality'])
             :step="1000"
             hide-details
             thumb-label
-          />
+          >
+            <template #prepend>
+              <v-btn
+                icon="mdi-minus"
+                size="x-small"
+                variant="text"
+                :disabled="filters.minVoteCount <= 0"
+                @click="filters.minVoteCount = Math.max(0, filters.minVoteCount - 1000)"
+              />
+            </template>
+            <template #append>
+              <v-btn
+                icon="mdi-plus"
+                size="x-small"
+                variant="text"
+                :disabled="filters.minVoteCount >= 500000"
+                @click="filters.minVoteCount = Math.min(500000, filters.minVoteCount + 1000)"
+              />
+            </template>
+          </v-slider>
         </v-expansion-panel-text>
       </v-expansion-panel>
 
