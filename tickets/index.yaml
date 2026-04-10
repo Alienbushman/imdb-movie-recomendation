@@ -257,3 +257,12 @@ tickets:
       - { id: ST-002, title: "Add FTS5 virtual table for people name search",            status: done, effort: medium,  depends_on: [ST-001] }
       - { id: ST-003, title: "Add FTS5 virtual table for title search",                  status: done, effort: medium,  depends_on: [] }
       - { id: ST-004, title: "Frontend: reduce debounce and improve search responsiveness", status: done, effort: low,  depends_on: [ST-002, ST-003] }
+
+  - id: "022"
+    title: "Fix English language misclassification via priority chain"
+    status: done
+    priority: medium
+    component: backend
+    subtask_dir: 022-language-detection-priority
+    subtasks:
+      - { id: ST-001, title: "4-step language detection priority chain", status: done, effort: low, depends_on: [] }

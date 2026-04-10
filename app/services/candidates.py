@@ -196,6 +196,12 @@ _AMBIGUOUS_REGIONS: frozenset[str] = frozenset({
     "ZW",  # Shona, Ndebele, English, ...
 })
 
+# Region codes that map to English and should be excluded when inferring a title's
+# original language from isOriginalTitle=1 rows (XWW = worldwide release).
+_ENGLISH_REGIONS: frozenset[str] = frozenset({
+    "US", "GB", "AU", "CA", "NZ", "IE", "ZA", "XWW",
+})
+
 # Rows per chunk when streaming large TSV files. 500K rows keeps each chunk
 # under ~100 MB in memory while scanning title.principals (100M+ rows total).
 _CHUNK_SIZE = 500_000
@@ -594,26 +600,52 @@ def _load_language_data(
     akas = akas.dropna(subset=["_resolved"])
     akas["_is_orig"] = (akas["isOriginalTitle"] == "1").astype(int)
 
-    # Primary: most common resolved language among isOriginalTitle=1 rows
+    # Step 1: explicit BCP-47 language code from isOriginalTitle=1 rows (most reliable)
     lang_by_title: dict[str, str] = (
-        akas[akas["_is_orig"] == 1]
-        .dropna(subset=["_resolved"])
-        .groupby("titleId")["_resolved"]
+        akas[(akas["_is_orig"] == 1) & akas["_lang"].notna()]
+        .groupby("titleId")["_lang"]
         .agg(lambda s: s.mode().iloc[0])
         .to_dict()
     )
 
-    # Fallback: for titles with no original-title match, use mode across all rows
-    no_orig = title_ids - lang_by_title.keys()
-    if no_orig:
-        fallback = (
-            akas[akas["titleId"].isin(no_orig)]
-            .dropna(subset=["_resolved"])
+    # Step 2: non-English, non-ambiguous region from isOriginalTitle=1 rows
+    # (_region_lang is already None for _AMBIGUOUS_REGIONS due to the mask above)
+    remaining = title_ids - lang_by_title.keys()
+    if remaining:
+        step2 = (
+            akas[
+                (akas["_is_orig"] == 1)
+                & akas["titleId"].isin(remaining)
+                & akas["_region_lang"].notna()
+                & ~akas["region"].isin(_ENGLISH_REGIONS)
+            ]
+            .groupby("titleId")["_region_lang"]
+            .agg(lambda s: s.mode().iloc[0])
+            .to_dict()
+        )
+        lang_by_title.update(step2)
+
+    # Step 3: explicit BCP-47 language code from ALL rows (sparse but accurate)
+    remaining = title_ids - lang_by_title.keys()
+    if remaining:
+        step3 = (
+            akas[akas["titleId"].isin(remaining) & akas["_lang"].notna()]
+            .groupby("titleId")["_lang"]
+            .agg(lambda s: s.mode().iloc[0])
+            .to_dict()
+        )
+        lang_by_title.update(step3)
+
+    # Step 4: full mode fallback — last resort, same as prior behaviour
+    remaining = title_ids - lang_by_title.keys()
+    if remaining:
+        step4 = (
+            akas[akas["titleId"].isin(remaining)]
             .groupby("titleId")["_resolved"]
             .agg(lambda s: s.mode().iloc[0])
             .to_dict()
         )
-        lang_by_title.update(fallback)
+        lang_by_title.update(step4)
 
     all_langs_by_title: dict[str, list[str]] = (
         akas.dropna(subset=["_resolved"])
