@@ -363,28 +363,31 @@ def search_titles(query: str, limit: int = 20) -> list[dict]:
     conn = _connect()
     try:
         fts_q = _fts5_query(query)
-        # Try FTS5 first
+        # Try FTS5 first (tables may not exist if no pipeline run yet)
         if fts_q:
-            rows = conn.execute(
-                """
-                SELECT r.imdb_id, r.title, r.year, r.title_type,
-                       1 AS is_rated, 0 AS num_votes
-                FROM rated_titles r
-                JOIN rated_titles_fts fts ON fts.rowid = r.rowid
-                WHERE rated_titles_fts MATCH ?
-                UNION
-                SELECT s.imdb_id, s.title, s.year, s.title_type,
-                       0 AS is_rated, s.num_votes
-                FROM scored_candidates s
-                JOIN scored_candidates_fts fts ON fts.rowid = s.rowid
-                WHERE scored_candidates_fts MATCH ?
-                ORDER BY is_rated DESC, num_votes DESC
-                LIMIT ?
-                """,
-                (fts_q, fts_q, limit),
-            ).fetchall()
-            if rows:
-                return [dict(r) for r in rows]
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT r.imdb_id, r.title, r.year, r.title_type,
+                           1 AS is_rated, 0 AS num_votes
+                    FROM rated_titles r
+                    JOIN rated_titles_fts fts ON fts.rowid = r.rowid
+                    WHERE rated_titles_fts MATCH ?
+                    UNION
+                    SELECT s.imdb_id, s.title, s.year, s.title_type,
+                           0 AS is_rated, s.num_votes
+                    FROM scored_candidates s
+                    JOIN scored_candidates_fts fts ON fts.rowid = s.rowid
+                    WHERE scored_candidates_fts MATCH ?
+                    ORDER BY is_rated DESC, num_votes DESC
+                    LIMIT ?
+                    """,
+                    (fts_q, fts_q, limit),
+                ).fetchall()
+                if rows:
+                    return [dict(r) for r in rows]
+            except sqlite3.OperationalError:
+                pass  # FTS tables not yet created; fall through to LIKE
         # Fallback to LIKE for substring matches
         rows = conn.execute(
             """
@@ -748,20 +751,24 @@ def search_people(query: str, limit: int = 20) -> list[dict]:
         return []
     conn = _connect()
     try:
+        _ensure_schema(conn)  # applies additive migrations (title_count/rated_count columns)
         fts_q = _fts5_query(query)
-        # Try FTS5 first
+        # Try FTS5 first (table may not exist if no pipeline run yet)
         if fts_q:
-            rows = conn.execute(
-                "SELECT p.name_id, p.name, p.primary_profession, p.title_count "
-                "FROM people p "
-                "JOIN people_fts fts ON fts.rowid = p.rowid "
-                "WHERE people_fts MATCH ? "
-                "ORDER BY p.rated_count DESC, p.title_count DESC "
-                "LIMIT ?",
-                (fts_q, limit),
-            ).fetchall()
-            if rows:
-                return [dict(r) for r in rows]
+            try:
+                rows = conn.execute(
+                    "SELECT p.name_id, p.name, p.primary_profession, p.title_count "
+                    "FROM people p "
+                    "JOIN people_fts fts ON fts.rowid = p.rowid "
+                    "WHERE people_fts MATCH ? "
+                    "ORDER BY p.rated_count DESC, p.title_count DESC "
+                    "LIMIT ?",
+                    (fts_q, limit),
+                ).fetchall()
+                if rows:
+                    return [dict(r) for r in rows]
+            except sqlite3.OperationalError:
+                pass  # FTS table not yet created; fall through to LIKE
         # Fallback to LIKE for substring matches
         rows = conn.execute(
             "SELECT name_id, name, primary_profession, title_count "
