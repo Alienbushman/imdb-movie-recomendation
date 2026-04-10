@@ -245,3 +245,15 @@ tickets:
     subtask_dir: 020-min-voters-default-filter
     subtasks:
       - { id: ST-001, title: "Fix min_vote_count always sent when non-zero", status: done, effort: low, depends_on: [] }
+
+  - id: "021"
+    title: "FTS5 full-text search for people and title search"
+    status: done
+    priority: high
+    component: backend
+    subtask_dir: 021-fts5-search-performance
+    subtasks:
+      - { id: ST-001, title: "Denormalize title_count and rated_count onto people table", status: done, effort: low,    depends_on: [] }
+      - { id: ST-002, title: "Add FTS5 virtual table for people name search",            status: done, effort: medium,  depends_on: [ST-001] }
+      - { id: ST-003, title: "Add FTS5 virtual table for title search",                  status: done, effort: medium,  depends_on: [] }
+      - { id: ST-004, title: "Frontend: reduce debounce and improve search responsiveness", status: done, effort: low,  depends_on: [ST-002, ST-003] }

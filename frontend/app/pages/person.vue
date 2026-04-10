@@ -13,7 +13,7 @@ function onSearchUpdate(query: string) {
   if (_searchTimer) clearTimeout(_searchTimer)
   _searchTimer = setTimeout(() => {
     person.search(query)
-  }, 300)
+  }, 150)
 }
 
 function onPersonSelected(selected: PersonSearchResult | null) {
@@ -81,17 +81,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="d-flex" style="min-height: calc(100vh - 64px)">
+  <div data-e2e="person-page" class="d-flex" style="min-height: calc(100vh - 64px)">
     <!-- Persistent filter sidebar -->
     <FilterDrawer />
 
     <!-- Main content area -->
-    <div class="flex-grow-1 pa-4 overflow-auto">
+    <div data-e2e="person-content" class="flex-grow-1 pa-4 overflow-auto">
       <!-- Search bar -->
       <v-autocomplete
         :model-value="person.selectedPerson"
         :items="person.searchResults"
         :loading="person.searchLoading"
+        data-e2e="person-search"
         item-value="name_id"
         return-object
         no-filter
@@ -122,37 +123,40 @@ onMounted(() => {
       </v-autocomplete>
 
       <!-- Results header: person name + count + role toggle + sort -->
-      <div v-if="person.selectedPerson && person.personResults" class="d-flex align-center flex-wrap ga-2 mb-3">
+      <div v-if="person.selectedPerson && person.personResults" data-e2e="person-results-header" class="d-flex align-center flex-wrap ga-2 mb-3">
         <v-icon size="20">mdi-account-details</v-icon>
-        <span class="font-weight-bold">{{ person.personResults.name }}</span>
-        <span class="text-caption text-medium-emphasis">
+        <span data-e2e="person-name" class="font-weight-bold">{{ person.personResults.name }}</span>
+        <span data-e2e="person-result-count" class="text-caption text-medium-emphasis">
           Showing {{ filteredResults.length }} of {{ person.personResults.total }}
         </span>
         <v-spacer />
         <v-btn-toggle
           v-model="roleFilter"
+          data-e2e="person-role-toggle"
           density="compact"
           color="primary"
           mandatory
         >
-          <v-btn value="any" size="small">Any</v-btn>
-          <v-btn value="director" size="small">Director</v-btn>
-          <v-btn value="actor" size="small">Actor</v-btn>
-          <v-btn value="writer" size="small">Writer</v-btn>
+          <v-btn data-e2e="person-role-any" value="any" size="small">Any</v-btn>
+          <v-btn data-e2e="person-role-director" value="director" size="small">Director</v-btn>
+          <v-btn data-e2e="person-role-actor" value="actor" size="small">Actor</v-btn>
+          <v-btn data-e2e="person-role-writer" value="writer" size="small">Writer</v-btn>
         </v-btn-toggle>
         <v-btn-toggle
           v-model="seenFilter"
+          data-e2e="person-seen-toggle"
           density="compact"
           color="secondary"
           mandatory
         >
-          <v-btn value="all" size="small">All</v-btn>
-          <v-btn value="unseen" size="small">Unseen</v-btn>
-          <v-btn value="seen" size="small">Seen</v-btn>
+          <v-btn data-e2e="person-seen-all" value="all" size="small">All</v-btn>
+          <v-btn data-e2e="person-seen-unseen" value="unseen" size="small">Unseen</v-btn>
+          <v-btn data-e2e="person-seen-seen" value="seen" size="small">Seen</v-btn>
         </v-btn-toggle>
         <v-select
           v-model="sortBy"
           :items="sortOptions"
+          data-e2e="person-sort-select"
           density="compact"
           hide-details
           variant="outlined"
@@ -164,6 +168,7 @@ onMounted(() => {
       <!-- Loading -->
       <v-progress-linear
         v-if="person.loading"
+        data-e2e="person-loading"
         indeterminate
         color="primary"
         class="mb-3"
@@ -171,12 +176,12 @@ onMounted(() => {
       />
 
       <!-- Error -->
-      <v-alert v-if="person.error" type="error" closable class="mb-4" @click:close="person.clearError()">
+      <v-alert v-if="person.error" data-e2e="person-alert-error" type="error" closable class="mb-4" @click:close="person.clearError()">
         {{ person.error }}
       </v-alert>
 
       <!-- Empty state: no person selected -->
-      <div v-if="!person.selectedPerson && !person.loading" class="text-center py-16">
+      <div v-if="!person.selectedPerson && !person.loading" data-e2e="person-empty-state" class="text-center py-16">
         <v-icon size="80" color="primary" class="mb-6 opacity-50">mdi-account-search</v-icon>
         <h2 class="text-h5 font-weight-bold mb-2">Browse by Person</h2>
         <p class="text-body-1 text-medium-emphasis">
@@ -185,12 +190,12 @@ onMounted(() => {
       </div>
 
       <!-- Loading skeletons -->
-      <div v-else-if="person.loading && !person.personResults" class="card-grid">
+      <div v-else-if="person.loading && !person.personResults" data-e2e="person-loading-skeletons" class="card-grid">
         <v-skeleton-loader v-for="i in 8" :key="i" type="card" />
       </div>
 
       <!-- Results grid -->
-      <div v-else-if="filteredResults.length" class="card-grid">
+      <div v-else-if="filteredResults.length" data-e2e="person-results-grid" class="card-grid">
         <RecommendationCard
           v-for="item in filteredResults"
           :key="item.imdb_id"
@@ -204,6 +209,7 @@ onMounted(() => {
       <!-- No results after filtering -->
       <v-alert
         v-else-if="person.personResults && !filteredResults.length && !person.loading"
+        data-e2e="person-no-results"
         type="info"
         variant="tonal"
       >

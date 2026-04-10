@@ -27,6 +27,18 @@ from app.models.schemas import CandidateTitle, RecommendationFilters
 logger = logging.getLogger(__name__)
 
 
+def _fts5_query(query: str) -> str:
+    """Convert a user search string to an FTS5 prefix query.
+
+    Each word gets a trailing * for prefix matching.
+    Example: "martin scor" -> "martin* scor*"
+    """
+    tokens = query.strip().split()
+    if not tokens:
+        return ""
+    return " ".join(f"{t}*" for t in tokens)
+
+
 def _db_path() -> Path:
     settings = get_settings()
     cache_dir = PROJECT_ROOT / settings.data.cache_dir
@@ -77,9 +89,11 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     )
     conn.execute("""
         CREATE TABLE IF NOT EXISTS people (
-            name_id TEXT PRIMARY KEY,
-            name    TEXT NOT NULL,
-            primary_profession TEXT
+            name_id            TEXT PRIMARY KEY,
+            name               TEXT NOT NULL,
+            primary_profession TEXT,
+            title_count        INTEGER NOT NULL DEFAULT 0,
+            rated_count        INTEGER NOT NULL DEFAULT 0
         )
     """)
     conn.execute("""
@@ -110,6 +124,15 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             user_rating  REAL
         )
     """)
+    # Additive migration for existing people databases missing count columns
+    for col, ddl in [
+        ("title_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("rated_count", "INTEGER NOT NULL DEFAULT 0"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE people ADD COLUMN {col} {ddl}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     # Additive migration for existing databases that only have the 4-column schema
     for col, ddl in [
         ("imdb_rating",  "REAL"),
@@ -123,6 +146,28 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE rated_titles ADD COLUMN {col} {ddl}")
         except sqlite3.OperationalError:
             pass  # column already exists
+    # FTS5 virtual tables for fast full-text search
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS people_fts USING fts5(
+            name,
+            content='people',
+            content_rowid='rowid'
+        )
+    """)
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS scored_candidates_fts USING fts5(
+            title,
+            content='scored_candidates',
+            content_rowid='rowid'
+        )
+    """)
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS rated_titles_fts USING fts5(
+            title,
+            content='rated_titles',
+            content_rowid='rowid'
+        )
+    """)
     conn.commit()
 
 
@@ -166,6 +211,10 @@ def save_scored(scored: list[tuple[CandidateTitle, float]]) -> None:
             "INSERT OR REPLACE INTO scored_candidates "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
+        )
+        # Rebuild FTS index for title search
+        conn.execute(
+            "INSERT INTO scored_candidates_fts(scored_candidates_fts) VALUES('rebuild')"
         )
         conn.commit()
         logger.info("Saved %d scored candidates to %s", len(rows), _db_path())
@@ -302,7 +351,7 @@ def query_all_candidates_lightweight(
 
 
 def search_titles(query: str, limit: int = 20) -> list[dict]:
-    """Search scored_candidates and rated_titles by title substring (case-insensitive).
+    """Search scored_candidates and rated_titles using FTS5 with LIKE fallback.
 
     Returns dicts with keys: imdb_id, title, year, title_type, is_rated.
     Rated titles are sorted first; within each group, results are ordered by
@@ -313,6 +362,30 @@ def search_titles(query: str, limit: int = 20) -> list[dict]:
         return []
     conn = _connect()
     try:
+        fts_q = _fts5_query(query)
+        # Try FTS5 first
+        if fts_q:
+            rows = conn.execute(
+                """
+                SELECT r.imdb_id, r.title, r.year, r.title_type,
+                       1 AS is_rated, 0 AS num_votes
+                FROM rated_titles r
+                JOIN rated_titles_fts fts ON fts.rowid = r.rowid
+                WHERE rated_titles_fts MATCH ?
+                UNION
+                SELECT s.imdb_id, s.title, s.year, s.title_type,
+                       0 AS is_rated, s.num_votes
+                FROM scored_candidates s
+                JOIN scored_candidates_fts fts ON fts.rowid = s.rowid
+                WHERE scored_candidates_fts MATCH ?
+                ORDER BY is_rated DESC, num_votes DESC
+                LIMIT ?
+                """,
+                (fts_q, fts_q, limit),
+            ).fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+        # Fallback to LIKE for substring matches
         rows = conn.execute(
             """
             SELECT imdb_id, title, year, title_type, 1 AS is_rated, 0 AS num_votes
@@ -455,7 +528,7 @@ def get_person(name_id: str) -> dict | None:
     conn = _connect()
     try:
         row = conn.execute(
-            "SELECT name_id, name, primary_profession FROM people WHERE name_id = ?",
+            "SELECT name_id, name, primary_profession, title_count FROM people WHERE name_id = ?",
             (name_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -594,6 +667,23 @@ def write_people(
             "INSERT OR REPLACE INTO title_people (imdb_id, name_id, role) VALUES (?,?,?)",
             [(tp["imdb_id"], tp["name_id"], tp["role"]) for tp in title_people],
         )
+        # Denormalize counts so search_people() avoids expensive JOINs
+        conn.execute("""
+            UPDATE people SET
+                title_count = (
+                    SELECT COUNT(DISTINCT tp.imdb_id)
+                    FROM title_people tp
+                    WHERE tp.name_id = people.name_id
+                ),
+                rated_count = (
+                    SELECT COUNT(DISTINCT rt.imdb_id)
+                    FROM title_people tp
+                    JOIN rated_titles rt ON rt.imdb_id = tp.imdb_id
+                    WHERE tp.name_id = people.name_id
+                )
+        """)
+        # Rebuild FTS index for people name search
+        conn.execute("INSERT INTO people_fts(people_fts) VALUES('rebuild')")
         conn.commit()
         logger.info(
             "Saved %d people and %d title-person rows", len(people), len(title_people)
@@ -634,6 +724,10 @@ def write_rated_titles(titles: list) -> None:
                 for t in titles
             ],
         )
+        # Rebuild FTS index for title search
+        conn.execute(
+            "INSERT INTO rated_titles_fts(rated_titles_fts) VALUES('rebuild')"
+        )
         conn.commit()
         logger.info("Saved %d rated titles to rated_titles table", len(titles))
     finally:
@@ -641,30 +735,38 @@ def write_rated_titles(titles: list) -> None:
 
 
 def search_people(query: str, limit: int = 20) -> list[dict]:
-    """Search people by name substring (case-insensitive).
+    """Search people by name using FTS5 with LIKE fallback.
 
     Returns dicts with keys: name_id, name, primary_profession, title_count.
-    Only returns people who have at least one row in title_people.
 
-    Results are ordered by rated-title count (how many of this person's titles
-    appear in the user's watchlist) DESC, then by total title_count DESC. This
-    boosts familiar names — e.g. searching "paul" surfaces Paul Newman above
-    prolific but obscure crew members with higher total credits.
+    Uses FTS5 for fast word-prefix matching (e.g. "scor" finds "Scorsese").
+    Falls back to LIKE for substring matches if FTS5 returns no results.
+    Results are ordered by rated_count DESC, then title_count DESC.
     """
     db = _db_path()
     if not db.exists():
         return []
     conn = _connect()
     try:
+        fts_q = _fts5_query(query)
+        # Try FTS5 first
+        if fts_q:
+            rows = conn.execute(
+                "SELECT p.name_id, p.name, p.primary_profession, p.title_count "
+                "FROM people p "
+                "JOIN people_fts fts ON fts.rowid = p.rowid "
+                "WHERE people_fts MATCH ? "
+                "ORDER BY p.rated_count DESC, p.title_count DESC "
+                "LIMIT ?",
+                (fts_q, limit),
+            ).fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+        # Fallback to LIKE for substring matches
         rows = conn.execute(
-            "SELECT p.name_id, p.name, p.primary_profession, "
-            "COUNT(DISTINCT tp.imdb_id) AS title_count, "
-            "COUNT(DISTINCT rt.imdb_id) AS rated_count "
-            "FROM people p "
-            "JOIN title_people tp ON tp.name_id = p.name_id "
-            "LEFT JOIN rated_titles rt ON rt.imdb_id = tp.imdb_id "
-            "WHERE p.name LIKE ? COLLATE NOCASE "
-            "GROUP BY p.name_id "
+            "SELECT name_id, name, primary_profession, title_count "
+            "FROM people "
+            "WHERE name LIKE ? COLLATE NOCASE "
             "ORDER BY rated_count DESC, title_count DESC "
             "LIMIT ?",
             (f"%{query}%", limit),

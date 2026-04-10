@@ -13,7 +13,7 @@ function onSearchUpdate(query: string) {
   if (_searchTimer) clearTimeout(_searchTimer)
   _searchTimer = setTimeout(() => {
     similar.search(query)
-  }, 300)
+  }, 150)
 }
 
 function onSeedSelected(seed: TitleSearchResult | null) {
@@ -80,20 +80,38 @@ function handleDismissed(imdbId: string) {
     )
   }
 }
+
+// Deep-link support: if the page was opened with ?imdb_id=&title=&year=&title_type=
+// (e.g. from the "Find Similar" button on a card popup), bootstrap the seed and
+// load results immediately.
+onMounted(() => {
+  const route = useRoute()
+  const q = route.query
+  if (!similar.selectedSeed && typeof q.imdb_id === 'string' && typeof q.title === 'string') {
+    similar.selectSeedById({
+      imdb_id: q.imdb_id,
+      title: q.title,
+      year: q.year ? Number(q.year) : null,
+      title_type: typeof q.title_type === 'string' ? q.title_type : 'movie',
+      is_rated: false,
+    })
+  }
+})
 </script>
 
 <template>
-  <div class="d-flex" style="min-height: calc(100vh - 64px)">
+  <div data-e2e="similar-page" class="d-flex" style="min-height: calc(100vh - 64px)">
     <!-- Persistent filter sidebar -->
     <FilterDrawer />
 
     <!-- Main content area -->
-    <div class="flex-grow-1 pa-4 overflow-auto">
+    <div data-e2e="similar-content" class="flex-grow-1 pa-4 overflow-auto">
       <!-- Search bar -->
       <v-autocomplete
         :model-value="similar.selectedSeed"
         :items="similar.searchResults"
         :loading="similar.searchLoading"
+        data-e2e="similar-search"
         item-value="imdb_id"
         return-object
         no-filter
@@ -127,16 +145,17 @@ function handleDismissed(imdbId: string) {
       </v-autocomplete>
 
       <!-- Seed summary + sort bar -->
-      <div v-if="similar.selectedSeed && similar.similarResults" class="d-flex align-center ga-2 mb-3">
+      <div v-if="similar.selectedSeed && similar.similarResults" data-e2e="similar-seed-summary" class="d-flex align-center ga-2 mb-3">
         <v-icon size="20">mdi-movie-star</v-icon>
-        <span class="font-weight-bold">{{ similar.similarResults.seed_title }}</span>
-        <span class="text-caption text-medium-emphasis">
+        <span data-e2e="similar-seed-title" class="font-weight-bold">{{ similar.similarResults.seed_title }}</span>
+        <span data-e2e="similar-result-count" class="text-caption text-medium-emphasis">
           Showing {{ sortedResults.length }} of {{ similar.similarResults.total_candidates }}
         </span>
         <v-spacer />
         <v-select
           v-model="sortBy"
           :items="sortOptions"
+          data-e2e="similar-sort-select"
           item-title="label"
           item-value="value"
           density="compact"
@@ -150,6 +169,7 @@ function handleDismissed(imdbId: string) {
       <!-- Loading -->
       <v-progress-linear
         v-if="similar.loading"
+        data-e2e="similar-loading"
         indeterminate
         color="primary"
         class="mb-3"
@@ -157,12 +177,12 @@ function handleDismissed(imdbId: string) {
       />
 
       <!-- Error -->
-      <v-alert v-if="similar.error" type="error" closable class="mb-4" @click:close="similar.clearError()">
+      <v-alert v-if="similar.error" data-e2e="similar-alert-error" type="error" closable class="mb-4" @click:close="similar.clearError()">
         {{ similar.error }}
       </v-alert>
 
       <!-- Empty state: no seed selected -->
-      <div v-if="!similar.selectedSeed && !similar.loading" class="text-center py-16">
+      <div v-if="!similar.selectedSeed && !similar.loading" data-e2e="similar-empty-state" class="text-center py-16">
         <v-icon size="80" color="primary" class="mb-6 opacity-50">mdi-movie-search</v-icon>
         <h2 class="text-h5 font-weight-bold mb-2">Find Similar Titles</h2>
         <p class="text-body-1 text-medium-emphasis">
@@ -171,12 +191,12 @@ function handleDismissed(imdbId: string) {
       </div>
 
       <!-- Loading skeletons -->
-      <div v-else-if="similar.loading && !similar.similarResults" class="card-grid">
+      <div v-else-if="similar.loading && !similar.similarResults" data-e2e="similar-loading-skeletons" class="card-grid">
         <v-skeleton-loader v-for="i in 8" :key="i" type="card" />
       </div>
 
       <!-- Results grid -->
-      <div v-else-if="sortedResults.length" class="card-grid">
+      <div v-else-if="sortedResults.length" data-e2e="similar-results-grid" class="card-grid">
         <RecommendationCard
           v-for="item in sortedResults"
           :key="item.imdb_id ?? item.title"
@@ -190,6 +210,7 @@ function handleDismissed(imdbId: string) {
       <!-- No results -->
       <v-alert
         v-else-if="similar.similarResults && !sortedResults.length && !similar.loading"
+        data-e2e="similar-no-results"
         type="info"
         variant="tonal"
       >
