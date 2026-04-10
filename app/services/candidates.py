@@ -541,8 +541,35 @@ def _resolve_names(
     return resolved
 
 
+_SCRIPT_RANGES: list[tuple[int, int, str]] = [
+    # (start_codepoint, end_codepoint, language)
+    (0x3040, 0x30FF, "Japanese"),   # Hiragana + Katakana
+    (0x31F0, 0x31FF, "Japanese"),   # Katakana phonetic extensions
+    (0xAC00, 0xD7AF, "Korean"),     # Hangul syllables
+    (0x1100, 0x11FF, "Korean"),     # Hangul jamo
+    (0x0600, 0x06FF, "Arabic"),     # Arabic
+    (0x0750, 0x077F, "Arabic"),     # Arabic supplement
+    (0x0E00, 0x0E7F, "Thai"),       # Thai
+    (0x0590, 0x05FF, "Hebrew"),     # Hebrew
+]
+
+
+def _detect_script_language(title: str) -> str | None:
+    """Return a language name if the title contains characters from an
+    unambiguous non-Latin script (Japanese kana, Korean hangul, Arabic,
+    Thai, Hebrew). Returns None for Latin, Cyrillic, or CJK-only titles."""
+    for char in title:
+        cp = ord(char)
+        for start, end, lang in _SCRIPT_RANGES:
+            if start <= cp <= end:
+                return lang
+    return None
+
+
 def _load_language_data(
     title_ids: set[str],
+    original_titles: dict[str, str] | None = None,
+    primary_titles: dict[str, str] | None = None,
 ) -> tuple[dict[str, str], dict[str, str], dict[str, list[str]]]:
     """Load the original language and country code for titles from title.akas.
 
@@ -573,8 +600,9 @@ def _load_language_data(
             "region": str,
             "language": str,
             "isOriginalTitle": str,
+            "title": str,
         },
-        usecols=["titleId", "region", "language", "isOriginalTitle"],
+        usecols=["titleId", "region", "language", "isOriginalTitle", "title"],
         chunksize=_CHUNK_SIZE,
     ):
         filtered = chunk[chunk["titleId"].isin(title_ids)]
@@ -625,16 +653,78 @@ def _load_language_data(
         )
         lang_by_title.update(step2)
 
-    # Step 3: explicit BCP-47 language code from ALL rows (sparse but accurate)
+    # Step 2a: English region from isOriginalTitle=1 rows.
+    # Resolves English films before they reach the score-based step 3 (which would
+    # otherwise misclassify widely-distributed English films as Japanese/Korean because
+    # their dubbed AKA entries outscore the English-region entries when English regions
+    # are excluded from step 2).
     remaining = title_ids - lang_by_title.keys()
     if remaining:
-        step3 = (
-            akas[akas["titleId"].isin(remaining) & akas["_lang"].notna()]
-            .groupby("titleId")["_lang"]
+        step2a = (
+            akas[
+                (akas["_is_orig"] == 1)
+                & akas["titleId"].isin(remaining)
+                & akas["_region_lang"].notna()
+                & akas["region"].isin(_ENGLISH_REGIONS)
+            ]
+            .groupby("titleId")["_region_lang"]
             .agg(lambda s: s.mode().iloc[0])
             .to_dict()
         )
-        lang_by_title.update(step3)
+        lang_by_title.update(step2a)
+
+    # Step 2.5: script detection from originalTitle in basics (kana/hangul/Arabic/Thai/Hebrew)
+    remaining = title_ids - lang_by_title.keys()
+    if remaining and original_titles:
+        for tid in remaining:
+            orig = original_titles.get(tid)
+            if orig:
+                detected = _detect_script_language(orig)
+                if detected:
+                    lang_by_title[tid] = detected
+
+    # Step 3: score-based language selection from non-English-region akas rows.
+    # Only applied to titles with probable non-English origin, identified by:
+    #   • originalTitle != primaryTitle (different titles suggest a translation was used)
+    #   • OR originalTitle contains non-ASCII characters (diacritics / romanization)
+    # This gate prevents English films with Japanese/Korean dubbed releases from being
+    # misclassified: e.g. "Pink Floyd: Live at Pompeii" has originalTitle == primaryTitle
+    # and is all-ASCII, so it skips step 3 and falls through to step 4 (mode, English).
+    #
+    # Each (titleId, lang) pair is scored:
+    #   +2 if the akas title's script matches the explicit language (e.g. katakana → Japanese)
+    #   +1 if the region's expected language matches the explicit language (region-confirmed)
+    remaining = title_ids - lang_by_title.keys()
+    if remaining:
+        non_english_origin: set[str] = set()
+        for tid in remaining:
+            orig = (original_titles or {}).get(tid) or ""
+            prim = (primary_titles or {}).get(tid) or ""
+            if any(ord(c) > 127 for c in orig) or (
+                orig and prim and orig.lower() != prim.lower()
+            ):
+                non_english_origin.add(tid)
+
+        if non_english_origin:
+            cands = akas[
+                akas["titleId"].isin(non_english_origin)
+                & akas["_lang"].notna()
+                & ~akas["region"].isin(_ENGLISH_REGIONS)
+            ].copy()
+            if not cands.empty:
+                cands["_script"] = cands["title"].apply(
+                    lambda t: _detect_script_language(t) if isinstance(t, str) else None
+                )
+                # +1 for region-language consistency, +2 for script confirmation
+                cands["_score"] = (cands["_region_lang"] == cands["_lang"]).astype(int)
+                cands.loc[cands["_script"] == cands["_lang"], "_score"] += 2
+
+                def _best_lang(group: "pd.DataFrame") -> str:
+                    totals = group.groupby("_lang")["_score"].sum()
+                    return str(totals.idxmax())
+
+                step3 = cands.groupby("titleId").apply(_best_lang).to_dict()
+                lang_by_title.update(step3)
 
     # Step 4: full mode fallback — last resort, same as prior behaviour
     remaining = title_ids - lang_by_title.keys()
@@ -883,7 +973,12 @@ def load_candidates_from_datasets(
     gc.collect()
 
     # --- Step 5: Stream title.akas for language/country ---
-    lang_by_title, country_by_title, all_langs_by_title = _load_language_data(candidate_ids)
+    cand_merged = merged[merged["tconst"].isin(candidate_ids)]
+    original_title_by_id = cand_merged.set_index("tconst")["originalTitle"].dropna().to_dict()
+    primary_title_by_id = cand_merged.set_index("tconst")["primaryTitle"].dropna().to_dict()
+    lang_by_title, country_by_title, all_langs_by_title = _load_language_data(
+        candidate_ids, original_title_by_id, primary_title_by_id
+    )
 
     # --- Step 6: Load anime whitelist ---
     anime_ids = _load_anime_ids()
