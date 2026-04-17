@@ -57,6 +57,11 @@ export const useSimilarStore = defineStore('similar', () => {
     }
   }
 
+  async function selectSeedById(seed: TitleSearchResult) {
+    selectedSeed.value = seed
+    await fetchSimilar()
+  }
+
   async function applyFilters() {
     if (selectedSeed.value) {
       await fetchSimilar()
@@ -77,6 +82,7 @@ export const useSimilarStore = defineStore('similar', () => {
     seenFilter,
     search,
     fetchSimilar,
+    selectSeedById,
     applyFilters,
     clearError,
   }

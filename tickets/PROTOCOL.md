@@ -22,6 +22,28 @@ For project-level constraints and development commands, see [`../CLAUDE.md`](../
 
 ---
 
+## User-Defined Tickets (Highest Priority)
+
+Before picking up any ticket from `index.yaml`, scan the `tickets/` directory for **stub tickets** — `.md` files that have no matching entry in `index.yaml`. These are raw, user-written descriptions that have not yet been turned into actionable work.
+
+**A stub ticket is any `.md` file in `tickets/` (excluding `PROTOCOL.md` and `README.md`) that is not listed in `index.yaml`.**
+
+Fleshing out stubs is the **highest-priority action** in any session — do it before starting any existing ticket:
+
+1. Read the stub file — understand the user's intent (however brief)
+2. Investigate the codebase — read the relevant files, reproduce the problem conceptually, identify root cause and scope
+3. Replace the stub `.md` with a full ticket file using `_templates/ticket.md`
+4. Create the ticket's subtask folder (`NNN-ticket-slug/`) containing:
+   - `PROGRESS.md` (from `_templates/progress.md`)
+   - `DECISIONS.md` (from `_templates/decisions.md`)
+   - One `ST-NNN-*.md` file per subtask (from `_templates/subtask.md`)
+5. Add the ticket entry (with all subtasks) to `index.yaml`, status `open`
+6. Stage all new files — do **not** commit yet (follow normal commit protocol)
+
+A stub is not ready to execute until all of steps 1–5 are done. Never start executing a stub; always flesh it out first.
+
+---
+
 ## Pre-Flight Checks
 
 Both suites must be green before you write any code:

@@ -1,7 +1,7 @@
 """Unit tests for app.services.recommend — filtering, director matching, explanations."""
 
 
-from app.models.schemas import CandidateTitle, FeatureVector, RatedTitle, RecommendationFilters
+from app.models.schemas import CandidateTitle, FeatureVector, RatedTitle, RecommendationFilters, SimilarToRef
 from app.services.features import ALL_GENRES, candidate_to_features
 from app.services.recommend import _apply_runtime_filters, _explain_prediction, _find_director_match
 
@@ -274,7 +274,11 @@ class TestExplainPrediction:
     def test_similar_titles_explanation(self):
         fv = self._make_feature_vector()
         candidate = _make_candidate()
-        explanations = _explain_prediction(fv, {}, candidate, [], ["Inception", "Tenet"])
+        similar = [
+            SimilarToRef(imdb_id="tt0468569", title="Inception", title_type="movie", year=2010),
+            SimilarToRef(imdb_id="tt6723592", title="Tenet", title_type="movie", year=2020),
+        ]
+        explanations = _explain_prediction(fv, {}, candidate, [], similar)
         assert any("Inception" in e for e in explanations)
 
     def test_actors_listed(self):
@@ -312,7 +316,8 @@ class TestExplainPrediction:
             genres=["Action", "Animation"],
         )
         rated = [_make_rated(title="Inception", directors=["Nolan"])]
-        explanations = _explain_prediction(fv, importances, candidate, rated, ["Tenet"])
+        similar = [SimilarToRef(imdb_id="tt6723592", title="Tenet", title_type="movie", year=2020)]
+        explanations = _explain_prediction(fv, importances, candidate, rated, similar)
         assert len(explanations) <= 5
 
     def test_genre_importance_explanation(self):

@@ -56,6 +56,11 @@ export const usePersonStore = defineStore('person', () => {
     error.value = null
   }
 
+  async function selectPersonById(selection: PersonSearchResult) {
+    selectPerson(selection)
+    await fetchTitles()
+  }
+
   async function applyFilters() {
     if (selectedPerson.value) {
       await fetchTitles()
@@ -83,6 +88,7 @@ export const usePersonStore = defineStore('person', () => {
     search,
     fetchTitles,
     selectPerson,
+    selectPersonById,
     applyFilters,
     handleDismissed,
     clearError,

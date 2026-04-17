@@ -151,6 +151,9 @@ Read `tickets/index.yaml` for the full machine-readable index with all subtask s
 | 014 | Documentation audit | **Done** |
 | 015 | Code quality and correctness fixes | **Done** |
 | 016 | Search and browse index gaps | **Open** |
+| 017 | Card popup navigation (find similar + click person) | **Done** |
+| 019 | Seen filter no effect on Similar page | **Open** |
+| 021 | FTS5 full-text search for people and title search | **Open** |
 
 ### Ticket File Format
 

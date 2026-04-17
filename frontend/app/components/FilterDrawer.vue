@@ -17,6 +17,7 @@ const recommendations = useRecommendationsStore()
 const similar = useSimilarStore()
 const person = usePersonStore()
 const filters = useFiltersStore()
+const api = useApi()
 
 const isSimilarPage = computed(() => route.path === '/similar')
 const isPersonPage = computed(() => route.path === '/person')
@@ -24,6 +25,57 @@ const isPersonPage = computed(() => route.path === '/person')
 // Search state for genre/language lists
 const genreSearch = ref('')
 const languageSearch = ref('')
+const keywordSearch = ref('')
+
+const popularKeywords = ref<string[]>([])
+const keywordsLoading = ref(false)
+
+onMounted(async () => {
+  if (popularKeywords.value.length) return
+  keywordsLoading.value = true
+  try {
+    popularKeywords.value = await api.getPopularKeywords(60)
+  } catch (e) {
+    console.warn('[filters] popular keywords fetch failed', e)
+  } finally {
+    keywordsLoading.value = false
+  }
+})
+
+const filteredKeywords = computed(() => {
+  const q = keywordSearch.value.toLowerCase().trim()
+  if (!q) return popularKeywords.value
+  return popularKeywords.value.filter(k => k.toLowerCase().includes(q))
+})
+
+function getKeywordState(kw: string): 'include' | 'exclude' | 'neutral' {
+  if (filters.selectedKeywords.includes(kw)) return 'include'
+  if (filters.excludedKeywords.includes(kw)) return 'exclude'
+  return 'neutral'
+}
+
+function cycleKeyword(kw: string) {
+  const state = getKeywordState(kw)
+  if (state === 'neutral') filters.toggleKeyword(kw)
+  else if (state === 'include') {
+    filters.toggleKeyword(kw)
+    filters.toggleExcludedKeyword(kw)
+  } else {
+    filters.toggleExcludedKeyword(kw)
+  }
+  scheduleApply()
+}
+
+function keywordChipColor(kw: string) {
+  const state = getKeywordState(kw)
+  if (state === 'include') return 'primary'
+  if (state === 'exclude') return 'error'
+  return undefined
+}
+
+function keywordChipVariant(kw: string) {
+  return getKeywordState(kw) === 'neutral' ? 'outlined' : 'flat'
+}
 
 const filteredGenres = computed(() =>
   ALL_GENRES.filter(g => g.toLowerCase().includes(genreSearch.value.toLowerCase())),
@@ -136,12 +188,15 @@ watch(
     filters.selectedLanguages,
     filters.excludedLanguages,
     filters.minImdbRating,
+    filters.minRuntime,
     filters.maxRuntime,
     filters.minPredictedScore,
     filters.topNMovies,
     filters.topNSeries,
     filters.topNAnime,
     filters.minVoteCount,
+    filters.selectedKeywords,
+    filters.excludedKeywords,
   ],
   () => scheduleApply(),
   { deep: true },
@@ -295,12 +350,12 @@ const openPanels = ref(['genres', 'quality'])
           </div>
 
           <p class="text-caption text-medium-emphasis mt-3 mb-1">
-            Max Runtime: {{ filters.maxRuntime }}min
+            Runtime: {{ filters.minRuntime }} – {{ filters.maxRuntime }} min
           </p>
-          <v-slider
-            v-model="filters.maxRuntime"
-            data-e2e="slider-max-runtime"
-            :min="30"
+          <v-range-slider
+            v-model="filters.runtimeRange"
+            data-e2e="slider-runtime-range"
+            :min="FILTER_DEFAULTS.minRuntime"
             :max="FILTER_DEFAULTS.maxRuntime"
             :step="10"
             hide-details
@@ -390,6 +445,56 @@ const openPanels = ref(['genres', 'quality'])
             >
               {{ lang }}
             </v-chip>
+          </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+
+      <!-- Moods & Themes (TMDB keywords) -->
+      <v-expansion-panel value="moods">
+        <v-expansion-panel-title class="filter-section-title">
+          Moods &amp; Themes
+          <v-chip
+            v-if="filters.selectedKeywords.length || filters.excludedKeywords.length"
+            size="x-small"
+            color="primary"
+            class="ml-2"
+          >
+            {{ filters.selectedKeywords.length + filters.excludedKeywords.length }}
+          </v-chip>
+        </v-expansion-panel-title>
+        <v-expansion-panel-text>
+          <p class="text-caption text-medium-emphasis mb-2">
+            Click once to include, again to exclude. Popular TMDB keywords.
+          </p>
+          <v-text-field
+            v-model="keywordSearch"
+            placeholder="Search moods…"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-magnify"
+            clearable
+            class="mb-2"
+          />
+          <v-progress-linear v-if="keywordsLoading" indeterminate height="2" color="primary" class="mb-2" />
+          <div class="d-flex flex-wrap ga-1">
+            <v-chip
+              v-for="kw in filteredKeywords"
+              :key="kw"
+              :data-e2e="`keyword-chip-${kw}`"
+              size="small"
+              :color="keywordChipColor(kw)"
+              :variant="keywordChipVariant(kw)"
+              class="genre-chip"
+              @click="cycleKeyword(kw)"
+            >
+              {{ kw }}
+            </v-chip>
+            <span
+              v-if="!keywordsLoading && !filteredKeywords.length"
+              class="text-caption text-medium-emphasis"
+            >
+              No matching moods.
+            </span>
           </div>
         </v-expansion-panel-text>
       </v-expansion-panel>

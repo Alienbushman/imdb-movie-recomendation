@@ -40,10 +40,12 @@ function handleStart() {
 
 <template>
   <div
+    data-e2e="setup-wizard"
     class="setup-wizard-overlay d-flex align-center justify-center"
     style="position: fixed; inset: 0; z-index: 100; background: rgba(var(--v-theme-background), 0.97)"
   >
     <v-card
+      data-e2e="setup-wizard-card"
       class="setup-wizard-card pa-8"
       max-width="540"
       width="100%"
@@ -59,10 +61,11 @@ function handleStart() {
       </div>
 
       <!-- Step 1: Datasets -->
-      <div class="d-flex align-start mb-6">
+      <div data-e2e="setup-step-datasets" class="d-flex align-start mb-6">
         <div class="step-icon-col mr-4 mt-1">
           <v-progress-circular
             v-if="datasetsDownloading"
+            data-e2e="setup-datasets-spinner"
             indeterminate
             color="primary"
             size="24"
@@ -72,12 +75,12 @@ function handleStart() {
         </div>
         <div class="flex-grow-1">
           <div class="text-subtitle-1 font-weight-medium mb-1">Dataset files</div>
-          <div class="text-body-2 text-medium-emphasis">{{ step1Label }}</div>
+          <div data-e2e="setup-datasets-label" class="text-body-2 text-medium-emphasis">{{ step1Label }}</div>
         </div>
       </div>
 
       <!-- Step 2: Ratings input -->
-      <div class="d-flex align-start mb-8">
+      <div data-e2e="setup-step-ratings" class="d-flex align-start mb-8">
         <div class="step-icon-col mr-4 mt-1">
           <v-icon
             :color="datasetsReady ? 'primary' : 'medium-emphasis'"
@@ -90,6 +93,7 @@ function handleStart() {
           <div class="text-subtitle-1 font-weight-medium mb-3">Your IMDB ratings</div>
           <v-text-field
             v-model="imdbUrl"
+            data-e2e="setup-imdb-url"
             label="IMDB Ratings URL"
             placeholder="https://www.imdb.com/user/ur.../ratings/"
             hint="Your IMDB ratings page must be set to public"
@@ -104,6 +108,7 @@ function handleStart() {
           />
           <div class="text-caption text-medium-emphasis mb-2">Or upload a CSV instead</div>
           <v-file-input
+            data-e2e="setup-csv-upload"
             label="Upload ratings CSV"
             accept=".csv"
             hint="Export from IMDB → Your ratings → Export"
@@ -119,6 +124,7 @@ function handleStart() {
 
       <!-- Action -->
       <v-btn
+        data-e2e="btn-setup-start"
         color="primary"
         size="large"
         block

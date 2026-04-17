@@ -43,6 +43,10 @@ class CandidateTitle(BaseModel):
     composers: list[str] = []
     cinematographers: list[str] = []
     is_anime: bool = False
+    keywords: list[str] = Field(
+        default=[],
+        description="TMDB keyword tags, e.g. 'time travel'. Empty if TMDB unavailable.",
+    )
 
 
 class TasteProfile(BaseModel):
@@ -148,6 +152,30 @@ class TitleSearchResult(BaseModel):
     )
 
 
+class SimilarToRef(BaseModel):
+    """Reference to a rated title cited in a recommendation's `similar_to` list.
+
+    Carries enough metadata for the frontend to navigate directly to the
+    `/similar` page for that title (imdb_id is required by `/similar/{imdb_id}`).
+    """
+
+    imdb_id: str
+    title: str
+    title_type: str
+    year: int | None = None
+    user_rating: int | None = Field(
+        default=None,
+        description="User's personal rating (1-10) for this rated title.",
+    )
+    reasons: list[str] = Field(
+        default=[],
+        description=(
+            "Why this rated title is cited as similar — e.g. "
+            "['Same director: Christopher Nolan', '3 shared genres']."
+        ),
+    )
+
+
 class PersonSearchResult(BaseModel):
     """Lightweight person info for search autocomplete."""
 
@@ -172,7 +200,7 @@ class PersonTitleResult(BaseModel):
     genres: list[str] = []
     predicted_score: float
     explanation: list[str] = []
-    similar_to: list[str] = []
+    similar_to: list[SimilarToRef] = []
     languages: list[str] = []
     roles: list[str] = Field(
         description="The roles this person played on the title (e.g. ['director', 'writer'])."
@@ -279,10 +307,22 @@ class Recommendation(BaseModel):
         description="Director of this title.",
         examples=["Christopher Nolan"],
     )
-    similar_to: list[str] = Field(
+    similar_to: list[SimilarToRef] = Field(
         default=[],
-        description="Up to 3 titles from your ratings that are similar to this recommendation.",
-        examples=[["Interstellar", "The Prestige", "Memento"]],
+        description=(
+            "Up to 3 titles from your ratings that are similar to this recommendation. "
+            "Each ref carries `imdb_id` so the frontend can deep-link to `/similar/{imdb_id}`."
+        ),
+        examples=[
+            [
+                {
+                    "imdb_id": "tt0816692",
+                    "title": "Interstellar",
+                    "title_type": "movie",
+                    "year": 2014,
+                },
+            ]
+        ],
     )
     imdb_id: str | None = Field(
         default=None,
@@ -433,6 +473,25 @@ class RecommendationFilters(BaseModel):
         ge=0,
         examples=[180],
     )
+    min_runtime: int | None = Field(
+        default=None,
+        description="Minimum runtime in minutes.",
+        ge=0,
+        examples=[60],
+    )
+    keywords: list[str] | None = Field(
+        default=None,
+        description=(
+            "Only include titles whose TMDB keywords contain ANY of these tags. "
+            "Case-insensitive substring match."
+        ),
+        examples=[["dystopia", "time travel"]],
+    )
+    exclude_keywords: list[str] | None = Field(
+        default=None,
+        description="Exclude titles whose TMDB keywords match any of these tags.",
+        examples=[["sequel", "remake"]],
+    )
     min_predicted_score: float | None = Field(
         default=None,
         description="Override the config min_predicted_score threshold.",
@@ -512,4 +571,66 @@ class DismissedListResponse(BaseModel):
     count: int = Field(
         description="Total number of dismissed titles.",
         examples=[5],
+    )
+
+
+# --- Feature 3: Personal Watchlist (save for later) ---
+
+
+class WatchlistResponse(BaseModel):
+    """Response from watchlist add/remove operations."""
+
+    imdb_id: str
+    action: str = Field(
+        description="Action performed: 'added' or 'removed'.",
+        examples=["added"],
+    )
+
+
+class WatchlistedTitle(BaseModel):
+    """A title saved to the personal watchlist."""
+
+    imdb_id: str
+    title: str | None = None
+    year: int | None = None
+    title_type: str | None = None
+    genres: list[str] = []
+    director: str | None = None
+    actors: list[str] = []
+    imdb_rating: float | None = None
+    predicted_score: float | None = None
+    imdb_url: str | None = None
+
+
+class WatchlistListResponse(BaseModel):
+    """All titles in the personal watchlist."""
+
+    watchlist_ids: list[str] = []
+    watchlist_titles: list[WatchlistedTitle] = []
+    count: int
+
+
+# --- Feature 4 / 8: Title media (trailers + cast images) ---
+
+
+class CastMember(BaseModel):
+    """Single cast or crew entry with optional TMDB profile image."""
+
+    name: str
+    character: str | None = None
+    profile_url: str | None = None
+
+
+class TitleMedia(BaseModel):
+    """Trailer URL, backdrop, poster, and cast images for a title."""
+
+    imdb_id: str
+    trailer_url: str | None = None
+    poster_url: str | None = None
+    backdrop_url: str | None = None
+    overview: str | None = None
+    cast: list[CastMember] = []
+    available: bool = Field(
+        default=False,
+        description="True if TMDB metadata was successfully fetched.",
     )

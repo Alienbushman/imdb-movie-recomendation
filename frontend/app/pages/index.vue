@@ -132,7 +132,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div>
+  <div data-e2e="index-page" class="index-root">
     <SetupWizard
       v-if="showSetupWizard"
       :status="setupStatus"
@@ -143,7 +143,7 @@ onUnmounted(() => {
     <FilterDrawer />
 
     <!-- Main content area -->
-    <div ref="contentArea" class="flex-grow-1 pa-4 overflow-auto">
+    <div ref="contentArea" data-e2e="index-content" class="flex-grow-1 pa-4 overflow-auto content-area">
       <ActionsBar
         :loading="recommendations.loading"
         :last-operation="recommendations.lastOperation"
@@ -158,12 +158,13 @@ onUnmounted(() => {
       />
 
       <!-- Sort bar -->
-      <div class="d-flex align-center ga-2 mb-2">
-        <span class="text-caption text-medium-emphasis">Showing {{ recommendations.currentList.length }}</span>
+      <div data-e2e="sort-bar" class="d-flex align-center ga-2 mb-2">
+        <span data-e2e="recommendations-result-count" class="text-caption text-medium-emphasis">Showing {{ recommendations.currentList.length }}</span>
         <v-spacer />
         <v-select
           v-model="recommendations.sortBy[recommendations.tab]"
           :items="sortOptions"
+          data-e2e="recommendations-sort-select"
           item-title="label"
           item-value="value"
           density="compact"
@@ -172,9 +173,9 @@ onUnmounted(() => {
           style="max-width: 180px"
           prepend-inner-icon="mdi-sort"
         />
-        <v-btn-toggle v-model="gridDense" density="compact" variant="outlined" mandatory>
-          <v-btn :value="false" icon="mdi-view-grid-outline" size="small" />
-          <v-btn :value="true" icon="mdi-view-grid" size="small" />
+        <v-btn-toggle v-model="gridDense" data-e2e="grid-density-toggle" density="compact" variant="outlined" mandatory>
+          <v-btn data-e2e="grid-density-comfortable" :value="false" icon="mdi-view-grid-outline" size="small" />
+          <v-btn data-e2e="grid-density-dense" :value="true" icon="mdi-view-grid" size="small" />
         </v-btn-toggle>
       </div>
 
@@ -204,6 +205,7 @@ onUnmounted(() => {
       <!-- Scroll-to-top FAB -->
       <v-btn
         v-if="showScrollTop"
+        data-e2e="btn-scroll-top"
         icon="mdi-chevron-double-up"
         color="primary"
         variant="tonal"
@@ -215,3 +217,15 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.index-root {
+  position: relative;
+}
+
+.content-area {
+  background:
+    radial-gradient(ellipse at top left, rgba(var(--v-theme-primary), 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse at bottom right, rgba(var(--v-theme-secondary), 0.05) 0%, transparent 55%);
+}
+</style>

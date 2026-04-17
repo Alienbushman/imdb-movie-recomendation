@@ -165,9 +165,21 @@ def find_similar(
         seed_year = seed_row["year"]
         seed_rating = seed_row["imdb_rating"]
     else:
-        # Try rated titles
+        # Try rated titles from in-memory state first, then fall back to watchlist CSV
         rated_titles = _state.get("titles") or []
         rated_match = next((rt for rt in rated_titles if rt.imdb_id == imdb_id), None)
+        if rated_match is None:
+            from app.core.config import PROJECT_ROOT, get_settings
+            from app.services.ingest import load_watchlist
+
+            settings = get_settings()
+            watchlist_path = PROJECT_ROOT / settings.data.watchlist_path
+            if watchlist_path.exists():
+                try:
+                    rated_titles = load_watchlist(watchlist_path)
+                    rated_match = next((rt for rt in rated_titles if rt.imdb_id == imdb_id), None)
+                except Exception:
+                    pass
         if rated_match is None:
             raise LookupError(f"Title {imdb_id} not found in scored DB or rated titles.")
         seed_title = rated_match.title

@@ -1,4 +1,4 @@
-import type { RecommendationFilters, RecommendationResponse, DismissResponse, DismissedListResponse, PipelineStatus, TitleSearchResult, SimilarResponse, PersonSearchResult, PersonTitlesResponse } from '../types'
+import type { RecommendationFilters, RecommendationResponse, DismissResponse, DismissedListResponse, PipelineStatus, TitleSearchResult, SimilarResponse, PersonSearchResult, PersonTitlesResponse, WatchlistResponse, WatchlistListResponse, TitleMedia } from '../types'
 
 export function useApi() {
   const config = useRuntimeConfig()
@@ -27,12 +27,15 @@ export function useApi() {
     if (filters.languages?.length) query.languages = filters.languages
     if (filters.exclude_languages?.length) query.exclude_languages = filters.exclude_languages
     if (filters.min_imdb_rating != null) query.min_imdb_rating = filters.min_imdb_rating
+    if (filters.min_runtime != null) query.min_runtime = filters.min_runtime
     if (filters.max_runtime != null) query.max_runtime = filters.max_runtime
     if (filters.min_predicted_score != null) query.min_predicted_score = filters.min_predicted_score
     if (filters.top_n_movies != null) query.top_n_movies = filters.top_n_movies
     if (filters.top_n_series != null) query.top_n_series = filters.top_n_series
     if (filters.top_n_anime != null) query.top_n_anime = filters.top_n_anime
     if (filters.min_vote_count != null) query.min_vote_count = filters.min_vote_count
+    if (filters.keywords?.length) query.keywords = filters.keywords
+    if (filters.exclude_keywords?.length) query.exclude_keywords = filters.exclude_keywords
     return query
   }
 
@@ -68,6 +71,26 @@ export function useApi() {
 
   function getDismissedList() {
     return fetchApi<DismissedListResponse>('/dismissed')
+  }
+
+  function addToWatchlist(imdbId: string) {
+    return fetchApi<WatchlistResponse>(`/watchlist/${imdbId}`, { method: 'POST' })
+  }
+
+  function removeFromWatchlist(imdbId: string) {
+    return fetchApi<WatchlistResponse>(`/watchlist/${imdbId}`, { method: 'DELETE' })
+  }
+
+  function getWatchlist() {
+    return fetchApi<WatchlistListResponse>('/watchlist')
+  }
+
+  function getTitleMedia(imdbId: string) {
+    return fetchApi<TitleMedia>(`/title/${imdbId}/media`)
+  }
+
+  function getPopularKeywords(limit = 60) {
+    return fetchApi<string[]>('/keywords/popular', { query: { limit } })
   }
 
   function downloadDatasets() {
@@ -118,5 +141,10 @@ export function useApi() {
     getSimilarTitles,
     searchPeople,
     getTitlesByPerson,
+    addToWatchlist,
+    removeFromWatchlist,
+    getWatchlist,
+    getTitleMedia,
+    getPopularKeywords,
   }
 }

@@ -20,6 +20,8 @@ data/datasets/
 data/taste_model.pkl
 data/dismissed.json
 data/watchlist.csv
+data/watchlist_saved.json
+data/watchlist_saved_metadata.json
 *.pkl
 
 # Frontend

@@ -19,7 +19,26 @@ logger = logging.getLogger(__name__)
 
 _TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 _CACHE_PATH = PROJECT_ROOT / "data" / "cache" / "tmdb_metadata.json"
+_MEDIA_CACHE_PATH = PROJECT_ROOT / "data" / "cache" / "tmdb_media.json"
 _RATE_LIMIT_DELAY = 0.25  # 4 req/s to stay within 40 req/10s
+
+_TMDB_IMG_BASE = "https://image.tmdb.org/t/p"
+_PROFILE_SIZE = "w185"
+_BACKDROP_SIZE = "w780"
+_POSTER_SIZE = "w500"
+
+# Curated fallback list used when TMDB metadata is unavailable.
+DEFAULT_MOOD_TAGS = [
+    "dystopia", "time travel", "post-apocalyptic", "based on novel",
+    "feel-good", "dark comedy", "psychological thriller", "noir",
+    "coming of age", "found family", "heist", "revenge",
+    "slow burn", "mind bending", "twist ending", "one-shot",
+    "courtroom", "biography", "true story", "war",
+    "space", "cyberpunk", "magic", "fairy tale",
+    "family drama", "redemption", "satire", "mockumentary",
+    "road trip", "survival", "monster", "haunted house",
+    "spy", "assassin", "hacker", "vigilante",
+]
 
 
 def _load_tmdb_cache() -> dict[str, dict]:
@@ -133,6 +152,152 @@ def compute_keyword_features(
         "has_known_keywords": bool(matched),
         "keyword_overlap_count": len(matched),
     }
+
+
+def _load_media_cache() -> dict[str, dict]:
+    if _MEDIA_CACHE_PATH.exists():
+        try:
+            with open(_MEDIA_CACHE_PATH) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_media_cache(data: dict[str, dict]) -> None:
+    _MEDIA_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_MEDIA_CACHE_PATH, "w") as f:
+        json.dump(data, f)
+
+
+def _empty_media(imdb_id: str) -> dict:
+    return {
+        "imdb_id": imdb_id,
+        "trailer_url": None,
+        "poster_url": None,
+        "backdrop_url": None,
+        "overview": None,
+        "cast": [],
+        "available": False,
+    }
+
+
+def _pick_trailer(videos: list[dict]) -> str | None:
+    """Pick the best YouTube trailer from TMDB's videos response."""
+    candidates = [
+        v for v in videos
+        if v.get("site") == "YouTube" and v.get("type") in ("Trailer", "Teaser")
+    ]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda v: (
+            v.get("type") != "Trailer",
+            not v.get("official", False),
+            v.get("size", 0) * -1,
+        ),
+    )
+    key = candidates[0].get("key")
+    return f"https://www.youtube.com/embed/{key}" if key else None
+
+
+def fetch_title_media(imdb_id: str) -> dict:
+    """Fetch trailer + poster + backdrop + cast images for an IMDB ID via TMDB.
+
+    Cached forever in ``data/cache/tmdb_media.json``. Returns an empty payload
+    (``available=False``) if no API key is configured or the lookup fails.
+    """
+    cache = _load_media_cache()
+    if imdb_id in cache:
+        return cache[imdb_id]
+
+    if not _TMDB_API_KEY:
+        result = _empty_media(imdb_id)
+        # Don't cache the no-key case — caching would lock the app into an
+        # empty state if the key is added later.
+        return result
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            tmdb_id, media_type = _find_tmdb_id(client, imdb_id)
+            if not tmdb_id or not media_type:
+                cache[imdb_id] = _empty_media(imdb_id)
+                _save_media_cache(cache)
+                return cache[imdb_id]
+
+            time.sleep(_RATE_LIMIT_DELAY)
+            details_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}"
+            details_resp = client.get(
+                details_url,
+                params={
+                    "api_key": _TMDB_API_KEY,
+                    "append_to_response": "videos,credits",
+                },
+            )
+            details_resp.raise_for_status()
+            data = details_resp.json()
+
+        videos = data.get("videos", {}).get("results", []) or []
+        credits = data.get("credits", {}) or {}
+        cast_raw = credits.get("cast", [])[:10]
+
+        cast = []
+        for c in cast_raw:
+            profile = c.get("profile_path")
+            cast.append({
+                "name": c.get("name", ""),
+                "character": c.get("character"),
+                "profile_url": (
+                    f"{_TMDB_IMG_BASE}/{_PROFILE_SIZE}{profile}" if profile else None
+                ),
+            })
+
+        poster = data.get("poster_path")
+        backdrop = data.get("backdrop_path")
+        result = {
+            "imdb_id": imdb_id,
+            "trailer_url": _pick_trailer(videos),
+            "poster_url": f"{_TMDB_IMG_BASE}/{_POSTER_SIZE}{poster}" if poster else None,
+            "backdrop_url": (
+                f"{_TMDB_IMG_BASE}/{_BACKDROP_SIZE}{backdrop}" if backdrop else None
+            ),
+            "overview": data.get("overview") or None,
+            "cast": cast,
+            "available": True,
+        }
+    except (httpx.HTTPError, KeyError, ValueError) as e:
+        logger.warning("TMDB media fetch failed for %s: %s", imdb_id, e)
+        result = _empty_media(imdb_id)
+
+    cache[imdb_id] = result
+    _save_media_cache(cache)
+    return result
+
+
+def top_keywords(limit: int = 60) -> list[str]:
+    """Return the most-frequent TMDB keywords across the cached metadata.
+
+    Falls back to the curated DEFAULT_MOOD_TAGS list when the cache is empty
+    so the frontend filter chips always have something to render.
+    """
+    cache = _load_tmdb_cache()
+    if not cache:
+        return DEFAULT_MOOD_TAGS[:limit]
+    counts: dict[str, int] = {}
+    for entry in cache.values():
+        for kw in entry.get("keywords", []):
+            counts[kw] = counts.get(kw, 0) + 1
+    if not counts:
+        return DEFAULT_MOOD_TAGS[:limit]
+    ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    return [kw for kw, _ in ranked[:limit]]
+
+
+def get_keywords_for(imdb_id: str) -> list[str]:
+    """Return cached TMDB keywords for an IMDB ID, or [] if missing."""
+    cache = _load_tmdb_cache()
+    entry = cache.get(imdb_id)
+    return entry.get("keywords", []) if entry else []
 
 
 def build_keyword_affinity(

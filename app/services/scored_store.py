@@ -15,6 +15,8 @@ Key functions:
 - ``search_people`` / ``get_person`` / ``query_titles_by_person`` — person-browse support
 - ``has_scored_results`` — fast check used by the startup fast-path
 """
+import csv
+import gzip
 import json
 import logging
 import sqlite3
@@ -74,9 +76,15 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             cinematographers    TEXT NOT NULL,
             is_anime            INTEGER NOT NULL DEFAULT 0,
             predicted_score     REAL NOT NULL,
-            scored_at           TEXT NOT NULL
+            scored_at           TEXT NOT NULL,
+            keywords            TEXT NOT NULL DEFAULT '[]'
         )
     """)
+    # Additive migration for databases that pre-date the keywords column
+    try:
+        conn.execute("ALTER TABLE scored_candidates ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_score ON scored_candidates(predicted_score DESC)"
     )
@@ -168,6 +176,26 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             content_rowid='rowid'
         )
     """)
+    # Persistent lookup table — never cleared, accumulates title names across runs.
+    # Used to resolve dismissed title names even after they leave scored_candidates.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS title_lookup (
+            imdb_id    TEXT PRIMARY KEY,
+            title      TEXT NOT NULL,
+            year       INTEGER,
+            title_type TEXT,
+            genres     TEXT NOT NULL DEFAULT '[]'
+        )
+    """)
+    # Backfill title_lookup from scored_candidates on first run
+    row = conn.execute("SELECT COUNT(*) FROM title_lookup").fetchone()
+    if row[0] == 0:
+        conn.execute("""
+            INSERT OR IGNORE INTO title_lookup
+                (imdb_id, title, year, title_type, genres)
+            SELECT imdb_id, title, year, title_type, genres
+            FROM scored_candidates
+        """)
     conn.commit()
 
 
@@ -204,17 +232,29 @@ def save_scored(scored: list[tuple[CandidateTitle, float]]) -> None:
                 int(c.is_anime),
                 score,
                 now,
+                json.dumps(getattr(c, "keywords", [])),
             )
             for c, score in scored
         ]
         conn.executemany(
-            "INSERT OR REPLACE INTO scored_candidates "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO scored_candidates ("
+            "imdb_id, title, original_title, title_type, year, genres, "
+            "imdb_rating, num_votes, runtime_mins, language, languages, "
+            "country_code, directors, actors, writers, composers, cinematographers, "
+            "is_anime, predicted_score, scored_at, keywords) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         # Rebuild FTS index for title search
         conn.execute(
             "INSERT INTO scored_candidates_fts(scored_candidates_fts) VALUES('rebuild')"
+        )
+        # Accumulate title names in the persistent lookup table (never cleared)
+        # so dismissed titles remain resolvable by name across pipeline runs.
+        conn.executemany(
+            "INSERT OR IGNORE INTO title_lookup (imdb_id, title, year, title_type, genres) "
+            "VALUES (?,?,?,?,?)",
+            [(c.imdb_id, c.title, c.year, c.title_type, json.dumps(c.genres)) for c, _ in scored],
         )
         conn.commit()
         logger.info("Saved %d scored candidates to %s", len(rows), _db_path())
@@ -256,6 +296,101 @@ def get_scored_count() -> int:
             conn.close()
     except Exception:
         return 0
+
+
+def _resolve_from_basics(imdb_ids: set[str]) -> list[dict]:
+    """Resolve title metadata from title.basics.tsv.gz for IDs not in the DB.
+
+    Streams the file so we never load it entirely into memory.
+    """
+    settings = get_settings()
+    basics_path = PROJECT_ROOT / settings.imdb_datasets.title_basics
+    if not basics_path.exists():
+        return []
+    found = []
+    with gzip.open(str(basics_path), "rt", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            if row["tconst"] in imdb_ids:
+                year = None
+                if row.get("startYear") and row["startYear"] != "\\N":
+                    try:
+                        year = int(row["startYear"])
+                    except ValueError:
+                        pass
+                genres = []
+                if row.get("genres") and row["genres"] != "\\N":
+                    genres = [g.strip() for g in row["genres"].split(",")]
+                found.append({
+                    "imdb_id": row["tconst"],
+                    "title": row["primaryTitle"],
+                    "year": year,
+                    "title_type": row.get("titleType"),
+                    "genres": genres,
+                })
+                if len(found) == len(imdb_ids):
+                    break
+    return found
+
+
+def get_titles_from_lookup(imdb_ids: list[str]) -> dict[str, dict]:
+    """Look up title metadata from the persistent title_lookup table.
+
+    If any IDs are missing, resolves them from title.basics.tsv.gz and
+    inserts into title_lookup for future lookups.
+
+    Returns a dict keyed by imdb_id with keys: title, year, title_type, genres.
+    Only IDs found are included.
+    """
+    if not imdb_ids:
+        return {}
+    conn = _connect()
+    try:
+        _ensure_schema(conn)
+        ph = ",".join("?" * len(imdb_ids))
+        rows = conn.execute(
+            "SELECT imdb_id, title, year, title_type, genres "
+            f"FROM title_lookup WHERE imdb_id IN ({ph})",
+            imdb_ids,
+        ).fetchall()
+        result = {
+            row["imdb_id"]: {
+                "title": row["title"],
+                "year": row["year"],
+                "title_type": row["title_type"],
+                "genres": json.loads(row["genres"]),
+            }
+            for row in rows
+        }
+
+        # Resolve missing IDs from the raw IMDB dataset
+        missing = set(imdb_ids) - set(result)
+        if missing:
+            resolved = _resolve_from_basics(missing)
+            if resolved:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO title_lookup "
+                    "(imdb_id, title, year, title_type, genres) "
+                    "VALUES (?,?,?,?,?)",
+                    [
+                        (r["imdb_id"], r["title"], r["year"],
+                         r["title_type"], json.dumps(r["genres"]))
+                        for r in resolved
+                    ],
+                )
+                conn.commit()
+                for r in resolved:
+                    result[r["imdb_id"]] = r
+                logger.info(
+                    "Resolved %d/%d missing titles from IMDB basics",
+                    len(resolved), len(missing),
+                )
+
+        return result
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        conn.close()
 
 
 def get_title_by_id(imdb_id: str) -> sqlite3.Row | None:
@@ -309,6 +444,9 @@ def query_all_candidates_lightweight(
             if filters.max_runtime is not None:
                 where.append("(runtime_mins IS NULL OR runtime_mins <= ?)")
                 params.append(filters.max_runtime)
+            if filters.min_runtime is not None:
+                where.append("runtime_mins >= ?")
+                params.append(filters.min_runtime)
             if filters.exclude_languages:
                 excl_ph = ",".join("?" * len(filters.exclude_languages))
                 where.append(f"(language IS NULL OR language NOT IN ({excl_ph}))")
@@ -331,8 +469,22 @@ def query_all_candidates_lightweight(
     finally:
         conn.close()
 
-    # Apply genre filters in Python (same pattern as query_candidates)
-    if filters and (filters.genres or filters.exclude_genres):
+    # Apply genre + keyword filters in Python (same pattern as query_candidates)
+    needs_python_filter = filters and (
+        filters.genres
+        or filters.exclude_genres
+        or filters.keywords
+        or filters.exclude_keywords
+    )
+    if needs_python_filter:
+        keyword_incl = (
+            {k.lower() for k in filters.keywords} if filters.keywords else set()
+        )
+        keyword_excl = (
+            {k.lower() for k in filters.exclude_keywords}
+            if filters.exclude_keywords
+            else set()
+        )
         filtered = []
         for row in rows:
             genres = json.loads(row["genres"])
@@ -343,6 +495,15 @@ def query_all_candidates_lightweight(
             if filters.exclude_genres:
                 excl_set = {g.strip() for g in filters.exclude_genres}
                 if excl_set & set(genres):
+                    continue
+            if keyword_incl or keyword_excl:
+                try:
+                    kw_lower = {k.lower() for k in json.loads(row["keywords"] or "[]")}
+                except (IndexError, KeyError):
+                    kw_lower = set()
+                if keyword_incl and not (keyword_incl & kw_lower):
+                    continue
+                if keyword_excl and (keyword_excl & kw_lower):
                     continue
             filtered.append(row)
         return filtered
@@ -455,6 +616,9 @@ def query_candidates(
             if filters.max_runtime is not None:
                 where.append("(runtime_mins IS NULL OR runtime_mins <= ?)")
                 params.append(filters.max_runtime)
+            if filters.min_runtime is not None:
+                where.append("runtime_mins >= ?")
+                params.append(filters.min_runtime)
             if filters.exclude_languages:
                 excl_ph = ",".join("?" * len(filters.exclude_languages))
                 where.append(f"(language IS NULL OR language NOT IN ({excl_ph}))")
@@ -483,6 +647,17 @@ def query_candidates(
     large_dismissed = dismissed_ids if len(dismissed_ids) > 500 else set()
     results: list[tuple[CandidateTitle, float]] = []
 
+    keyword_incl_lower = (
+        {k.strip().lower() for k in filters.keywords}
+        if filters and filters.keywords
+        else set()
+    )
+    keyword_excl_lower = (
+        {k.strip().lower() for k in filters.exclude_keywords}
+        if filters and filters.exclude_keywords
+        else set()
+    )
+
     for row in rows:
         if large_dismissed and row["imdb_id"] in large_dismissed:
             continue
@@ -498,6 +673,18 @@ def query_candidates(
                 excl_set = {g.strip() for g in filters.exclude_genres}
                 if excl_set & set(genres):
                     continue
+
+        try:
+            keywords = json.loads(row["keywords"] or "[]")
+        except (IndexError, KeyError):
+            keywords = []
+
+        if keyword_incl_lower or keyword_excl_lower:
+            kw_lower = {k.lower() for k in keywords}
+            if keyword_incl_lower and not (keyword_incl_lower & kw_lower):
+                continue
+            if keyword_excl_lower and (keyword_excl_lower & kw_lower):
+                continue
 
         candidate = CandidateTitle(
             imdb_id=row["imdb_id"],
@@ -517,6 +704,7 @@ def query_candidates(
             writers=json.loads(row["writers"]),
             composers=json.loads(row["composers"]),
             cinematographers=json.loads(row["cinematographers"]),
+            keywords=keywords,
         )
         results.append((candidate, row["predicted_score"]))
 
@@ -735,6 +923,62 @@ def write_rated_titles(titles: list) -> None:
         logger.info("Saved %d rated titles to rated_titles table", len(titles))
     finally:
         conn.close()
+
+
+def load_rated_titles() -> list:
+    """Load rated titles from SQLite for similarity computation.
+
+    Used by ``get_recommendations_from_db`` after a server restart, when
+    ``_state["titles"]`` is None because the pipeline hasn't been run in this
+    process.  Only the fields required by ``_find_similar_rated`` are needed
+    (``user_rating``, ``genres``, ``imdb_id``, ``title``, ``title_type``,
+    ``year``); the remaining ``RatedTitle`` fields are filled with safe defaults.
+    """
+    from app.models.schemas import RatedTitle
+
+    db = _db_path()
+    if not db.exists():
+        return []
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT imdb_id, title, year, title_type, imdb_rating, num_votes, "
+            "runtime_mins, genres, languages, user_rating FROM rated_titles"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+    titles = []
+    for row in rows:
+        genres = json.loads(row["genres"]) if row["genres"] else []
+        languages = json.loads(row["languages"]) if row["languages"] else []
+        language = languages[0] if languages else None
+        try:
+            titles.append(
+                RatedTitle(
+                    imdb_id=row["imdb_id"],
+                    title=row["title"],
+                    original_title=row["title"],
+                    title_type=row["title_type"],
+                    user_rating=int(row["user_rating"] or 0),
+                    date_rated="",
+                    imdb_rating=float(row["imdb_rating"] or 0.0),
+                    runtime_mins=row["runtime_mins"],
+                    year=int(row["year"] or 0),
+                    genres=genres,
+                    num_votes=int(row["num_votes"] or 0),
+                    release_date="",
+                    directors=[],
+                    url="",
+                    language=language,
+                )
+            )
+        except Exception:
+            continue
+    logger.info("Loaded %d rated titles from DB for similarity computation", len(titles))
+    return titles
 
 
 def search_people(query: str, limit: int = 20) -> list[dict]:
