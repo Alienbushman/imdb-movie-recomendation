@@ -13,7 +13,7 @@ from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger(__name__)
 
-_USER_ID_PATTERN = re.compile(r"ur\d+")
+_USER_ID_PATTERN = re.compile(r"ur\d+|p\.[a-z0-9]{8,}", re.IGNORECASE)
 
 _PLAYWRIGHT_ARGS = ["--disable-blink-features=AutomationControlled"]
 # Extra flags required in Docker (no hardware GPU, /dev/shm is limited)
@@ -64,10 +64,11 @@ def _start_xvfb_if_needed() -> None:
 def _extract_user_id(imdb_url: str) -> str:
     """Extract IMDB user ID from a URL or raw ID string.
 
-    Accepts:
-      - Full URL: https://www.imdb.com/user/ur38228117/ratings/
-      - Short URL: imdb.com/user/ur38228117
-      - Raw ID: ur38228117
+    Accepts both IMDB user ID formats:
+      - Legacy URL: https://www.imdb.com/user/ur38228117/ratings/
+      - New URL:    https://www.imdb.com/user/p.arvu7rnrmdgia6petxotlpd7da/ratings/
+      - Short URL:  imdb.com/user/ur38228117
+      - Raw ID:     ur38228117 or p.arvu7rnrmdgia6petxotlpd7da
 
     Raises ValueError if no valid user ID found.
     """
@@ -75,7 +76,8 @@ def _extract_user_id(imdb_url: str) -> str:
     if not match:
         raise ValueError(
             f"No valid IMDB user ID found in: {imdb_url!r}. "
-            "Expected format: ur followed by digits (e.g. ur38228117)."
+            "Expected 'ur' followed by digits (e.g. ur38228117) "
+            "or 'p.' followed by alphanumerics (e.g. p.arvu7rnrmdgia6petxotlpd7da)."
         )
     return match.group()
 

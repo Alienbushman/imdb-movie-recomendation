@@ -14,6 +14,7 @@ from app.models.schemas import (
     TasteProfile,
 )
 from app.services.ingest import _parse_list_field
+from app.services.scrape import _extract_user_id
 
 # --- Schema construction ---
 
@@ -117,3 +118,38 @@ def test_parse_list_field_nan():
 
 def test_parse_list_field_strips_whitespace():
     assert _parse_list_field("  Action ,  Comedy  ") == ["Action", "Comedy"]
+
+
+# --- IMDB user ID extraction ---
+
+
+def test_extract_user_id_legacy_url():
+    assert (
+        _extract_user_id("https://www.imdb.com/user/ur38228117/ratings/") == "ur38228117"
+    )
+
+
+def test_extract_user_id_new_format_url():
+    assert (
+        _extract_user_id(
+            "https://www.imdb.com/user/p.arvu7rnrmdgia6petxotlpd7da/ratings/"
+        )
+        == "p.arvu7rnrmdgia6petxotlpd7da"
+    )
+
+
+def test_extract_user_id_raw_legacy_id():
+    assert _extract_user_id("ur38228117") == "ur38228117"
+
+
+def test_extract_user_id_raw_new_id():
+    assert (
+        _extract_user_id("p.arvu7rnrmdgia6petxotlpd7da") == "p.arvu7rnrmdgia6petxotlpd7da"
+    )
+
+
+def test_extract_user_id_invalid_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        _extract_user_id("https://www.imdb.com/title/tt1375666/")
