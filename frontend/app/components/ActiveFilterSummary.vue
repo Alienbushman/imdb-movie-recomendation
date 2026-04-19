@@ -10,11 +10,12 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div v-if="filters.activeFilterSummary.length || filters.hasActiveExclusions" class="d-flex align-center ga-2 mb-3 flex-wrap">
+  <div v-if="filters.activeFilterSummary.length || filters.hasActiveExclusions" data-e2e="active-filter-summary" class="d-flex align-center ga-2 mb-3 flex-wrap">
     <span class="text-caption text-medium-emphasis">Filters:</span>
     <v-chip
       v-for="label in filters.activeFilterSummary"
       :key="label"
+      :data-e2e="`active-filter-chip-${label}`"
       size="small"
       color="primary"
       variant="tonal"
@@ -26,6 +27,7 @@ const emit = defineEmits<{
       <v-chip
         v-for="genre in filters.excludedGenres"
         :key="'eg-' + genre"
+        :data-e2e="`excluded-genre-chip-${genre.toLowerCase()}`"
         size="small"
         color="error"
         variant="outlined"
@@ -37,6 +39,7 @@ const emit = defineEmits<{
       <v-chip
         v-for="lang in filters.excludedLanguages"
         :key="'el-' + lang"
+        :data-e2e="`excluded-language-chip-${lang.toLowerCase()}`"
         size="small"
         color="warning"
         variant="outlined"

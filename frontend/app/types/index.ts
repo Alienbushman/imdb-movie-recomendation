@@ -10,6 +10,15 @@ export interface ApiError {
   message?: string
 }
 
+export interface SimilarToRef {
+  imdb_id: string
+  title: string
+  title_type: string
+  year: number | null
+  user_rating?: number | null
+  reasons?: string[]
+}
+
 export interface Recommendation {
   title: string
   title_type: string
@@ -20,7 +29,7 @@ export interface Recommendation {
   explanation: string[]
   actors: string[]
   director: string | null
-  similar_to: string[]
+  similar_to: SimilarToRef[]
   language: string | null
   imdb_id: string | null
   imdb_url: string | null
@@ -42,12 +51,15 @@ export interface RecommendationFilters {
   languages?: string[] | null
   exclude_languages?: string[] | null
   min_imdb_rating?: number | null
+  min_runtime?: number | null
   max_runtime?: number | null
   min_predicted_score?: number | null
   top_n_movies?: number | null
   top_n_series?: number | null
   top_n_anime?: number | null
   min_vote_count?: number | null
+  keywords?: string[] | null
+  exclude_keywords?: string[] | null
 }
 
 export interface DismissResponse {
@@ -68,6 +80,46 @@ export interface DismissedListResponse {
   dismissed_ids: string[]
   dismissed_titles: DismissedTitle[]
   count: number
+}
+
+export interface WatchlistResponse {
+  imdb_id: string
+  action: string
+}
+
+export interface WatchlistedTitle {
+  imdb_id: string
+  title: string | null
+  year: number | null
+  title_type: string | null
+  genres: string[]
+  director: string | null
+  actors: string[]
+  imdb_rating: number | null
+  predicted_score: number | null
+  imdb_url: string | null
+}
+
+export interface WatchlistListResponse {
+  watchlist_ids: string[]
+  watchlist_titles: WatchlistedTitle[]
+  count: number
+}
+
+export interface CastMember {
+  name: string
+  character: string | null
+  profile_url: string | null
+}
+
+export interface TitleMedia {
+  imdb_id: string
+  trailer_url: string | null
+  poster_url: string | null
+  backdrop_url: string | null
+  overview: string | null
+  cast: CastMember[]
+  available: boolean
 }
 
 export interface TitleSearchResult {
@@ -161,7 +213,7 @@ export interface CardDisplayItem {
   // Display fields — different per source
   display_score: number        // predicted_score or similarity_score
   display_explanations: string[] // explanation or similarity_explanation
-  similar_to?: string[]        // only for Recommendation
+  similar_to?: SimilarToRef[]  // only for Recommendation
   score_label?: string         // e.g. "★ 8.2" or "87% match"
   score_color?: string         // e.g. "success" or "info"
   extra_badges?: Array<{ label: string; color: string }>  // e.g. "Seen" chip

@@ -69,7 +69,7 @@ function handleIncludeLanguage(language: string) {
 onMounted(() => {
   const route = useRoute()
   const q = route.query
-  if (!person.selectedPerson && typeof q.name_id === 'string' && typeof q.name === 'string') {
+  if (typeof q.name_id === 'string' && typeof q.name === 'string') {
     person.selectPersonById({
       name_id: q.name_id,
       name: q.name,

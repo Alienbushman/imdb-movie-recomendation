@@ -9,6 +9,7 @@ from app.models.schemas import DismissedTitle
 logger = logging.getLogger(__name__)
 
 DISMISSED_PATH = PROJECT_ROOT / "data" / "dismissed.json"
+DISMISSED_METADATA_PATH = PROJECT_ROOT / "data" / "dismissed_metadata.json"
 
 _lock = threading.Lock()
 
@@ -29,13 +30,34 @@ def _save_dismissed_ids(ids: set[str]) -> None:
         json.dump(sorted(ids), f, indent=2)
 
 
+def _load_dismissed_metadata() -> dict[str, dict]:
+    """Load saved title metadata for dismissed IDs."""
+    if not DISMISSED_METADATA_PATH.exists():
+        return {}
+    with open(DISMISSED_METADATA_PATH) as f:
+        return json.load(f)
+
+
+def _save_dismissed_metadata(metadata: dict[str, dict]) -> None:
+    """Persist title metadata for dismissed IDs to disk."""
+    DISMISSED_METADATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(DISMISSED_METADATA_PATH, "w") as f:
+        json.dump(metadata, f, indent=2)
+
+
 def get_dismissed_ids() -> set[str]:
     """Return the current set of dismissed IMDB IDs."""
     with _lock:
         return _load_dismissed_ids()
 
 
-def dismiss_title(imdb_id: str) -> bool:
+def dismiss_title(
+    imdb_id: str,
+    title: str | None = None,
+    year: int | None = None,
+    title_type: str | None = None,
+    genres: list[str] | None = None,
+) -> bool:
     """Add an IMDB ID to the dismissed set. Returns True if newly added."""
     with _lock:
         ids = _load_dismissed_ids()
@@ -43,6 +65,18 @@ def dismiss_title(imdb_id: str) -> bool:
             return False
         ids.add(imdb_id)
         _save_dismissed_ids(ids)
+
+        # Save metadata so the dismissed page can show titles by name
+        if title is not None:
+            metadata = _load_dismissed_metadata()
+            metadata[imdb_id] = {
+                "title": title,
+                "year": year,
+                "title_type": title_type,
+                "genres": genres or [],
+            }
+            _save_dismissed_metadata(metadata)
+
         logger.info("Dismissed %s (total: %d)", imdb_id, len(ids))
         return True
 
@@ -55,6 +89,13 @@ def restore_title(imdb_id: str) -> bool:
             return False
         ids.discard(imdb_id)
         _save_dismissed_ids(ids)
+
+        # Remove saved metadata
+        metadata = _load_dismissed_metadata()
+        if imdb_id in metadata:
+            del metadata[imdb_id]
+            _save_dismissed_metadata(metadata)
+
         logger.info("Restored %s (total: %d)", imdb_id, len(ids))
         return True
 
@@ -65,31 +106,52 @@ def get_dismissed_with_metadata() -> list[DismissedTitle]:
     if not ids:
         return []
 
-    # Try to resolve from scored SQLite DB first, then fall back to candidate cache
+    from app.services.scored_store import get_titles_from_lookup
+
+    # Check saved metadata file first (populated at dismiss time)
     lookup: dict[str, dict] = {}
-    db_path = PROJECT_ROOT / "data" / "cache" / "scored_candidates.db"
-    if db_path.exists():
+    saved_metadata = _load_dismissed_metadata()
+    for imdb_id in ids:
+        if imdb_id in saved_metadata:
+            lookup[imdb_id] = saved_metadata[imdb_id]
+
+    # Check persistent title_lookup table (accumulates all titles seen across pipeline runs)
+    remaining = set(ids) - set(lookup)
+    if remaining:
         try:
-            conn = sqlite3.connect(str(db_path))
-            conn.row_factory = sqlite3.Row
-            ph = ",".join("?" * len(ids))
-            sql = (
-                "SELECT imdb_id, title, year, title_type, genres "
-                f"FROM scored_candidates WHERE imdb_id IN ({ph})"
+            found = get_titles_from_lookup(sorted(remaining))
+            lookup.update(found)
+            logger.info(
+                "Resolved %d/%d dismissed titles from title_lookup", len(found), len(remaining)
             )
-            rows = conn.execute(sql, ids).fetchall()
-            conn.close()
-            for row in rows:
-                lookup[row["imdb_id"]] = {
-                    "imdb_id": row["imdb_id"],
-                    "title": row["title"],
-                    "year": row["year"],
-                    "title_type": row["title_type"],
-                    "genres": json.loads(row["genres"]),
-                }
-            logger.info("Resolved %d/%d dismissed titles from scored DB", len(lookup), len(ids))
         except Exception:
-            logger.warning("Failed to read scored DB for dismissed metadata")
+            logger.warning("Failed to read title_lookup for dismissed metadata")
+
+    # Try to resolve remaining from scored_candidates (titles dismissed this session)
+    remaining = set(ids) - set(lookup)
+    if remaining:
+        db_path = PROJECT_ROOT / "data" / "cache" / "scored_candidates.db"
+        if db_path.exists():
+            try:
+                conn = sqlite3.connect(str(db_path))
+                conn.row_factory = sqlite3.Row
+                ph = ",".join("?" * len(remaining))
+                sql = (
+                    "SELECT imdb_id, title, year, title_type, genres "
+                    f"FROM scored_candidates WHERE imdb_id IN ({ph})"
+                )
+                rows = conn.execute(sql, sorted(remaining)).fetchall()
+                conn.close()
+                for row in rows:
+                    lookup[row["imdb_id"]] = {
+                        "title": row["title"],
+                        "year": row["year"],
+                        "title_type": row["title_type"],
+                        "genres": json.loads(row["genres"]),
+                    }
+                logger.info("Resolved %d/%d dismissed titles from scored DB", len(lookup), len(ids))
+            except Exception:
+                logger.warning("Failed to read scored DB for dismissed metadata")
 
     # Fill remaining from candidate JSON cache
     remaining = set(ids) - set(lookup)

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <!-- Dark rounded background -->
+  <rect width="64" height="64" rx="14" fill="#0d0d1a"/>
+  <!-- Film reel outer ring -->
+  <circle cx="32" cy="32" r="24" fill="none" stroke="url(#g1)" stroke-width="5"/>
+  <!-- 6 sprocket holes at radius 17 from center -->
+  <circle cx="32" cy="15" r="3.5" fill="#a78bfa"/>
+  <circle cx="46.7" cy="23.5" r="3.5" fill="#a78bfa"/>
+  <circle cx="46.7" cy="40.5" r="3.5" fill="#a78bfa"/>
+  <circle cx="32" cy="49" r="3.5" fill="#a78bfa"/>
+  <circle cx="17.3" cy="40.5" r="3.5" fill="#a78bfa"/>
+  <circle cx="17.3" cy="23.5" r="3.5" fill="#a78bfa"/>
+  <!-- Center hub -->
+  <circle cx="32" cy="32" r="9" fill="url(#g1)"/>
+  <!-- 5-pointed star (outer r=6, inner r=2.5, centered at 32,32) -->
+  <polygon points="32,26 33.47,29.98 37.71,30.15 34.38,32.77 35.53,36.85 32,34.5 28.47,36.85 29.62,32.77 26.29,30.15 30.53,29.98" fill="white"/>
+</svg>

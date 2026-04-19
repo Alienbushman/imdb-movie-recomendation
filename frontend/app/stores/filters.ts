@@ -4,6 +4,7 @@ import type { RecommendationFilters } from '../types'
 
 export const FILTER_DEFAULTS = {
   minImdbRating: 0,
+  minRuntime: 0,
   maxRuntime: 300,
   minPredictedScore: 6.5,
   minVoteCount: 1000,
@@ -47,12 +48,23 @@ export const useFiltersStore = defineStore('filters', () => {
   const selectedLanguages = ref<string[]>([])
   const excludedLanguages = ref<string[]>([])
   const minImdbRating = ref<number>(FILTER_DEFAULTS.minImdbRating)
+  const minRuntime = ref<number>(FILTER_DEFAULTS.minRuntime)
   const maxRuntime = ref<number>(FILTER_DEFAULTS.maxRuntime)
   const minPredictedScore = ref<number>(FILTER_DEFAULTS.minPredictedScore)
   const topNMovies = ref<number | undefined>()
   const topNSeries = ref<number | undefined>()
   const topNAnime = ref<number | undefined>()
   const minVoteCount = ref<number>(FILTER_DEFAULTS.minVoteCount)
+  const selectedKeywords = ref<string[]>([])
+  const excludedKeywords = ref<string[]>([])
+
+  const runtimeRange = computed({
+    get: () => [minRuntime.value, maxRuntime.value] as [number, number],
+    set: (val: [number, number]) => {
+      minRuntime.value = val[0]
+      maxRuntime.value = val[1]
+    },
+  })
 
   const yearRange = computed({
     get: () => [minYear.value ?? MIN_YEAR_BOUND, maxYear.value ?? CURRENT_YEAR] as [number, number],
@@ -80,12 +92,15 @@ export const useFiltersStore = defineStore('filters', () => {
     if (selectedLanguages.value.length) f.languages = [...selectedLanguages.value]
     if (excludedLanguages.value.length) f.exclude_languages = [...excludedLanguages.value]
     if (minImdbRating.value > FILTER_DEFAULTS.minImdbRating) f.min_imdb_rating = minImdbRating.value
+    if (minRuntime.value > FILTER_DEFAULTS.minRuntime) f.min_runtime = minRuntime.value
     if (maxRuntime.value < FILTER_DEFAULTS.maxRuntime) f.max_runtime = maxRuntime.value
     if (minPredictedScore.value !== FILTER_DEFAULTS.minPredictedScore) f.min_predicted_score = minPredictedScore.value
     if (topNMovies.value != null) f.top_n_movies = topNMovies.value
     if (topNSeries.value != null) f.top_n_series = topNSeries.value
     if (topNAnime.value != null) f.top_n_anime = topNAnime.value
     if (minVoteCount.value > 0) f.min_vote_count = minVoteCount.value
+    if (selectedKeywords.value.length) f.keywords = [...selectedKeywords.value]
+    if (excludedKeywords.value.length) f.exclude_keywords = [...excludedKeywords.value]
 
     const result = Object.keys(f).length ? f : undefined
     console.log('[filters] buildFilters — result:', result)
@@ -137,12 +152,27 @@ export const useFiltersStore = defineStore('filters', () => {
     selectedLanguages.value = []
     excludedLanguages.value = []
     minImdbRating.value = FILTER_DEFAULTS.minImdbRating
+    minRuntime.value = FILTER_DEFAULTS.minRuntime
     maxRuntime.value = FILTER_DEFAULTS.maxRuntime
     minPredictedScore.value = FILTER_DEFAULTS.minPredictedScore
     topNMovies.value = undefined
     topNSeries.value = undefined
     topNAnime.value = undefined
     minVoteCount.value = FILTER_DEFAULTS.minVoteCount
+    selectedKeywords.value = []
+    excludedKeywords.value = []
+  }
+
+  function toggleKeyword(keyword: string) {
+    const idx = selectedKeywords.value.indexOf(keyword)
+    if (idx >= 0) selectedKeywords.value.splice(idx, 1)
+    else selectedKeywords.value.push(keyword)
+  }
+
+  function toggleExcludedKeyword(keyword: string) {
+    const idx = excludedKeywords.value.indexOf(keyword)
+    if (idx >= 0) excludedKeywords.value.splice(idx, 1)
+    else excludedKeywords.value.push(keyword)
   }
 
   const activeFilterSummary = computed(() => {
@@ -153,12 +183,17 @@ export const useFiltersStore = defineStore('filters', () => {
     if (selectedGenres.value.length) labels.push(selectedGenres.value.join(', '))
     if (selectedLanguages.value.length) labels.push(selectedLanguages.value.join(', '))
     if (minImdbRating.value > FILTER_DEFAULTS.minImdbRating) labels.push(`IMDB ≥ ${minImdbRating.value}`)
-    if (maxRuntime.value < FILTER_DEFAULTS.maxRuntime) labels.push(`≤ ${maxRuntime.value} min`)
+    const rMin = minRuntime.value > FILTER_DEFAULTS.minRuntime
+    const rMax = maxRuntime.value < FILTER_DEFAULTS.maxRuntime
+    if (rMin && rMax) labels.push(`${minRuntime.value}–${maxRuntime.value} min`)
+    else if (rMax) labels.push(`≤ ${maxRuntime.value} min`)
+    else if (rMin) labels.push(`≥ ${minRuntime.value} min`)
     if (minPredictedScore.value !== FILTER_DEFAULTS.minPredictedScore) labels.push(`score ≥ ${minPredictedScore.value}`)
     if (topNMovies.value != null) labels.push(`${topNMovies.value} movies`)
     if (topNSeries.value != null) labels.push(`${topNSeries.value} series`)
     if (topNAnime.value != null) labels.push(`${topNAnime.value} anime`)
     if (minVoteCount.value > FILTER_DEFAULTS.minVoteCount) labels.push(`≥ ${minVoteCount.value.toLocaleString()} votes`)
+    if (selectedKeywords.value.length) labels.push(`moods: ${selectedKeywords.value.slice(0, 2).join(', ')}${selectedKeywords.value.length > 2 ? '…' : ''}`)
     return labels
   })
 
@@ -171,12 +206,15 @@ export const useFiltersStore = defineStore('filters', () => {
       || selectedLanguages.value.length
       || excludedLanguages.value.length
       || minImdbRating.value > FILTER_DEFAULTS.minImdbRating
+      || minRuntime.value > FILTER_DEFAULTS.minRuntime
       || maxRuntime.value < FILTER_DEFAULTS.maxRuntime
       || minPredictedScore.value !== FILTER_DEFAULTS.minPredictedScore
       || topNMovies.value != null
       || topNSeries.value != null
       || topNAnime.value != null
       || minVoteCount.value > FILTER_DEFAULTS.minVoteCount
+      || selectedKeywords.value.length
+      || excludedKeywords.value.length
     )
   })
 
@@ -193,12 +231,16 @@ export const useFiltersStore = defineStore('filters', () => {
     selectedLanguages,
     excludedLanguages,
     minImdbRating,
+    minRuntime,
     maxRuntime,
+    runtimeRange,
     minPredictedScore,
     topNMovies,
     topNSeries,
     topNAnime,
     minVoteCount,
+    selectedKeywords,
+    excludedKeywords,
     buildFilters,
     addExcludedGenre,
     removeExcludedGenre,
@@ -206,6 +248,8 @@ export const useFiltersStore = defineStore('filters', () => {
     removeSelectedLanguage,
     addExcludedLanguage,
     removeExcludedLanguage,
+    toggleKeyword,
+    toggleExcludedKeyword,
     resetFilters,
     activeFilterSummary,
     hasActiveFilters,

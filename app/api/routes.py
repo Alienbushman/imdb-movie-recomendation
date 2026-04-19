@@ -17,7 +17,10 @@ from app.models.schemas import (
     RecommendationFilters,
     RecommendationResponse,
     SimilarResponse,
+    TitleMedia,
     TitleSearchResult,
+    WatchlistListResponse,
+    WatchlistResponse,
 )
 from app.services.dismissed import (
     dismiss_title,
@@ -37,6 +40,12 @@ from app.services.scored_store import (
     query_titles_by_person,
     search_people,
     search_titles,
+)
+from app.services.watchlist import (
+    add_to_watchlist,
+    get_watchlist_ids,
+    get_watchlist_with_metadata,
+    remove_from_watchlist,
 )
 
 logger = logging.getLogger(__name__)
@@ -259,9 +268,9 @@ def _parse_filters(
         None,
         description="Exclude titles matching any of these genres.",
     ),
-    language: str | None = Query(
+    languages: list[str] | None = Query(
         None,
-        description="Only include titles in this language.",
+        description="Only include titles in any of these languages.",
     ),
     exclude_languages: list[str] | None = Query(
         None,
@@ -274,6 +283,15 @@ def _parse_filters(
         le=10.0,
     ),
     max_runtime: int | None = Query(None, description="Maximum runtime in minutes.", ge=0),
+    min_runtime: int | None = Query(None, description="Minimum runtime in minutes.", ge=0),
+    keywords: list[str] | None = Query(
+        None,
+        description="Only include titles whose TMDB keywords match any of these tags.",
+    ),
+    exclude_keywords: list[str] | None = Query(
+        None,
+        description="Exclude titles whose TMDB keywords match any of these tags.",
+    ),
     min_predicted_score: float | None = Query(
         None,
         description="Override min predicted score.",
@@ -314,10 +332,13 @@ def _parse_filters(
         max_year=max_year,
         genres=genres,
         exclude_genres=exclude_genres,
-        language=language,
+        languages=languages,
         exclude_languages=exclude_languages,
         min_imdb_rating=min_imdb_rating,
         max_runtime=max_runtime,
+        min_runtime=min_runtime,
+        keywords=keywords,
+        exclude_keywords=exclude_keywords,
         min_predicted_score=min_predicted_score,
         top_n_movies=top_n_movies,
         top_n_series=top_n_series,
@@ -666,7 +687,17 @@ def dismiss_recommendation(
     Use `DELETE /dismiss/{imdb_id}` to restore a dismissed title.
     """
     logger.info("POST /dismiss/%s", imdb_id)
-    added = dismiss_title(imdb_id)
+    from app.services.scored_store import get_title_by_id
+
+    row = get_title_by_id(imdb_id)
+    title = year = title_type = genres = None
+    if row:
+        title = row["title"]
+        year = row["year"]
+        title_type = row["title_type"]
+        genres = json.loads(row["genres"])
+
+    added = dismiss_title(imdb_id, title=title, year=year, title_type=title_type, genres=genres)
     if not added:
         raise HTTPException(status_code=409, detail=f"{imdb_id} is already dismissed.")
     return DismissResponse(imdb_id=imdb_id, action="dismissed")
@@ -707,3 +738,149 @@ def list_dismissed():
     ids = sorted(get_dismissed_ids())
     titles = get_dismissed_with_metadata()
     return DismissedListResponse(dismissed_ids=ids, dismissed_titles=titles, count=len(ids))
+
+
+# ---------------------------------------------------------------------------
+# Watchlist (save for later)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/watchlist/{imdb_id}",
+    response_model=WatchlistResponse,
+    summary="Save a title to your personal watchlist",
+    tags=["Watchlist"],
+    responses={
+        200: {"description": "Title added to watchlist."},
+        409: {"description": "Title was already on the watchlist."},
+    },
+)
+def watchlist_add(
+    imdb_id: str = Path(description="IMDB title ID to save.", pattern=r"^tt\d+$"),
+):
+    """Save a title for later viewing.
+
+    Persisted to ``data/watchlist_saved.json``. Watchlisted titles still appear
+    in normal recommendations — saving is purely a personal bookmark.
+    """
+    logger.info("POST /watchlist/%s", imdb_id)
+    from app.services.scored_store import get_title_by_id
+
+    row = get_title_by_id(imdb_id)
+    title = year = title_type = director = None
+    genres: list[str] = []
+    actors: list[str] = []
+    imdb_rating: float | None = None
+    predicted_score: float | None = None
+    if row:
+        title = row["title"]
+        year = row["year"]
+        title_type = row["title_type"]
+        genres = json.loads(row["genres"])
+        directors = json.loads(row["directors"])
+        director = directors[0] if directors else None
+        actors = json.loads(row["actors"])[:3]
+        imdb_rating = row["imdb_rating"]
+        predicted_score = row["predicted_score"]
+
+    added = add_to_watchlist(
+        imdb_id,
+        title=title,
+        year=year,
+        title_type=title_type,
+        genres=genres,
+        director=director,
+        actors=actors,
+        imdb_rating=imdb_rating,
+        predicted_score=predicted_score,
+    )
+    if not added:
+        raise HTTPException(status_code=409, detail=f"{imdb_id} is already on the watchlist.")
+    return WatchlistResponse(imdb_id=imdb_id, action="added")
+
+
+@router.delete(
+    "/watchlist/{imdb_id}",
+    response_model=WatchlistResponse,
+    summary="Remove a title from your watchlist",
+    tags=["Watchlist"],
+    responses={
+        200: {"description": "Title removed from watchlist."},
+        404: {"description": "Title was not on the watchlist."},
+    },
+)
+def watchlist_remove(
+    imdb_id: str = Path(description="IMDB title ID to remove.", pattern=r"^tt\d+$"),
+):
+    """Remove a title from the saved watchlist."""
+    logger.info("DELETE /watchlist/%s", imdb_id)
+    removed = remove_from_watchlist(imdb_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"{imdb_id} is not on the watchlist.")
+    return WatchlistResponse(imdb_id=imdb_id, action="removed")
+
+
+@router.get(
+    "/watchlist",
+    response_model=WatchlistListResponse,
+    summary="List all saved watchlist titles",
+    tags=["Watchlist"],
+)
+def watchlist_list():
+    """Return every title currently on the saved watchlist with metadata."""
+    ids = sorted(get_watchlist_ids())
+    titles = get_watchlist_with_metadata()
+    return WatchlistListResponse(watchlist_ids=ids, watchlist_titles=titles, count=len(ids))
+
+
+# ---------------------------------------------------------------------------
+# Title media (TMDB trailers, backdrops, cast photos)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/title/{imdb_id}/media",
+    response_model=TitleMedia,
+    summary="Get trailer, backdrop, and cast images for a title",
+    tags=["Title Media"],
+    responses={
+        200: {"description": "Title media; `available=false` when TMDB key is missing."},
+    },
+)
+def title_media(
+    imdb_id: str = Path(description="IMDB title ID.", pattern=r"^tt\d+$"),
+):
+    """Return TMDB-derived trailer URL, poster, backdrop, and cast images.
+
+    Falls back to an empty response (``available=false``) when ``TMDB_API_KEY``
+    is not configured. The TMDB lookup result is cached on disk forever — no
+    second network call for the same title.
+    """
+    from app.services.tmdb import fetch_title_media
+
+    return fetch_title_media(imdb_id)
+
+
+# ---------------------------------------------------------------------------
+# Keyword catalogue (mood/tag filters)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/keywords/popular",
+    response_model=list[str],
+    summary="Curated list of popular mood/theme tags",
+    tags=["Keywords"],
+)
+def popular_keywords(
+    limit: int = Query(60, ge=10, le=200),
+):
+    """Return the most-frequent TMDB keywords across the user's scored candidates.
+
+    Used by the frontend to populate a quick-pick filter chip list. When TMDB
+    metadata isn't available, returns a curated default set so the UI can still
+    render meaningful chips.
+    """
+    from app.services.tmdb import top_keywords
+
+    return top_keywords(limit)

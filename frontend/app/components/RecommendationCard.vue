@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { CardDisplayItem } from '../types'
+import type { CardDisplayItem, SimilarToRef, TitleMedia } from '../types'
+import { useWatchlistStore } from '../stores/watchlist'
 
 const props = defineProps<{
   item: CardDisplayItem
@@ -12,9 +13,13 @@ const emit = defineEmits<{
 }>()
 
 const api = useApi()
+const watchlist = useWatchlistStore()
 const dismissing = ref(false)
 const showAllExplanations = ref(false)
 const dialogOpen = ref(false)
+const media = ref<TitleMedia | null>(null)
+const mediaLoading = ref(false)
+const mediaFetched = ref(false)
 
 const visibleGenres = computed(() => props.item.genres.slice(0, 4))
 const extraGenres = computed(() => Math.max(0, props.item.genres.length - 4))
@@ -25,6 +30,35 @@ const visibleExplanations = computed(() =>
     : props.item.display_explanations.slice(0, 3),
 )
 const extraExplanations = computed(() => Math.max(0, props.item.display_explanations.length - 3))
+
+const isWatchlisted = computed(() => watchlist.has(props.item.imdb_id))
+const watchlistPending = computed(() => watchlist.isPending(props.item.imdb_id))
+
+async function loadMedia() {
+  if (!props.item.imdb_id || mediaFetched.value) return
+  mediaLoading.value = true
+  try {
+    media.value = await api.getTitleMedia(props.item.imdb_id)
+    mediaFetched.value = true
+  } catch (e) {
+    console.error('[card] media fetch failed:', props.item.imdb_id, e)
+  } finally {
+    mediaLoading.value = false
+  }
+}
+
+watch(dialogOpen, (open) => {
+  if (open) loadMedia()
+})
+
+async function toggleWatchlist() {
+  if (!props.item.imdb_id) return
+  try {
+    await watchlist.toggle(props.item.imdb_id)
+  } catch {
+    // handled in store
+  }
+}
 
 async function handleDismiss() {
   if (!props.item.imdb_id) return
@@ -40,6 +74,46 @@ async function handleDismiss() {
   finally {
     dismissing.value = false
   }
+}
+
+async function openFindSimilar() {
+  if (!props.item.imdb_id) return
+  dialogOpen.value = false
+  await navigateTo({
+    path: '/similar',
+    query: {
+      imdb_id: props.item.imdb_id,
+      title: props.item.title,
+      year: props.item.year ?? undefined,
+      title_type: props.item.title_type,
+    },
+  })
+}
+
+async function openFindSimilarRef(ref: SimilarToRef) {
+  if (!ref.imdb_id) return
+  dialogOpen.value = false
+  await navigateTo({
+    path: '/similar',
+    query: {
+      imdb_id: ref.imdb_id,
+      title: ref.title,
+      year: ref.year ?? undefined,
+      title_type: ref.title_type,
+    },
+  })
+}
+
+async function openPerson(name: string) {
+  if (!name) return
+  dialogOpen.value = false
+  await navigateTo({
+    path: '/person',
+    query: {
+      name_id: name.toLowerCase(),
+      name,
+    },
+  })
 }
 </script>
 
@@ -158,7 +232,7 @@ async function handleDismiss() {
       <!-- Similar titles (recommendation mode only) -->
       <div v-if="item.similar_to?.length" data-e2e="card-similar-to" class="text-body-2 mb-2 text-medium-emphasis text-truncate">
         <v-icon size="x-small" class="mr-1">mdi-movie-filter</v-icon>
-        Similar to: {{ item.similar_to.join(', ') }}
+        Similar to: {{ item.similar_to.map(s => s.title).join(', ') }}
       </div>
 
       <!-- Explanations / similarity reasons — max 3 visible -->
@@ -183,6 +257,20 @@ async function handleDismiss() {
     </v-card-text>
 
     <v-card-actions class="pt-0">
+      <v-tooltip :text="isWatchlisted ? 'Remove from watchlist' : 'Save to watchlist'" location="top">
+        <template #activator="{ props: tp }">
+          <v-btn
+            v-bind="tp"
+            :data-e2e="`btn-watchlist-${item.imdb_id}`"
+            size="small"
+            variant="text"
+            :color="isWatchlisted ? 'primary' : 'default'"
+            :icon="isWatchlisted ? 'mdi-bookmark' : 'mdi-bookmark-outline'"
+            :loading="watchlistPending"
+            @click.stop="toggleWatchlist"
+          />
+        </template>
+      </v-tooltip>
       <v-spacer />
       <v-btn
         data-e2e="btn-dismiss"
@@ -199,10 +287,19 @@ async function handleDismiss() {
   </v-card>
 
   <!-- Detail dialog -->
-  <v-dialog v-model="dialogOpen" max-width="600" scrollable>
+  <v-dialog v-model="dialogOpen" max-width="720" scrollable>
     <v-card class="detail-dialog">
+      <!-- Backdrop hero -->
+      <div
+        v-if="media?.backdrop_url"
+        class="dialog-backdrop"
+        :style="{ backgroundImage: `url(${media.backdrop_url})` }"
+      >
+        <div class="dialog-backdrop-overlay" />
+      </div>
+
       <!-- Header -->
-      <v-card-title class="d-flex align-center pt-4 pb-2">
+      <v-card-title class="d-flex align-center pt-4 pb-2" :class="{ 'over-backdrop': media?.backdrop_url }">
         <span class="dialog-title flex-grow-1">{{ item.title }}</span>
         <v-chip
           :color="item.score_color"
@@ -218,6 +315,29 @@ async function handleDismiss() {
       <v-divider />
 
       <v-card-text class="pt-4">
+        <!-- Trailer -->
+        <div v-if="media?.trailer_url" class="trailer-wrap mb-4">
+          <iframe
+            :src="media.trailer_url"
+            class="trailer-iframe"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          />
+        </div>
+
+        <!-- Overview -->
+        <div v-if="media?.overview" class="text-body-2 mb-4 text-medium-emphasis">
+          {{ media.overview }}
+        </div>
+
+        <v-progress-linear
+          v-if="mediaLoading && !media"
+          indeterminate
+          color="primary"
+          height="2"
+          class="mb-3"
+        />
+
         <!-- Meta row -->
         <div class="d-flex align-center ga-2 flex-wrap mb-4">
           <v-chip v-if="item.year" size="small" variant="tonal">{{ item.year }}</v-chip>
@@ -252,34 +372,89 @@ async function handleDismiss() {
         <!-- Director -->
         <div v-if="item.director" class="mb-3">
           <div class="text-overline text-medium-emphasis mb-1">Director</div>
-          <div class="text-body-1">
-            <v-icon size="small" class="mr-1">mdi-movie-open</v-icon>
+          <v-chip
+            data-e2e="dialog-director-chip"
+            size="small"
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-movie-open"
+            class="chip-clickable"
+            @click="openPerson(item.director!)"
+          >
             {{ item.director }}
-          </div>
+          </v-chip>
         </div>
 
-        <!-- Actors -->
-        <div v-if="item.actors.length" class="mb-3">
+        <!-- Cast with photos (TMDB) -->
+        <div v-if="media?.cast?.length" class="mb-3">
           <div class="text-overline text-medium-emphasis mb-1">Cast</div>
-          <div class="text-body-1">
-            <v-icon size="small" class="mr-1">mdi-account-group</v-icon>
-            {{ item.actors.join(', ') }}
+          <div class="cast-row">
+            <div
+              v-for="c in media.cast"
+              :key="c.name"
+              class="cast-item chip-clickable"
+              @click="openPerson(c.name)"
+            >
+              <v-avatar size="56" color="surface-variant">
+                <v-img
+                  v-if="c.profile_url"
+                  :src="c.profile_url"
+                  :alt="c.name"
+                  cover
+                />
+                <v-icon v-else size="28">mdi-account</v-icon>
+              </v-avatar>
+              <div class="cast-name">{{ c.name }}</div>
+              <div v-if="c.character" class="cast-character">{{ c.character }}</div>
+            </div>
+          </div>
+        </div>
+        <!-- Actors fallback when TMDB unavailable -->
+        <div v-else-if="item.actors.length" class="mb-3">
+          <div class="text-overline text-medium-emphasis mb-1">Cast</div>
+          <div class="d-flex flex-wrap ga-1">
+            <v-chip
+              v-for="actor in item.actors"
+              :key="actor"
+              data-e2e="dialog-actor-chip"
+              size="small"
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-account"
+              class="chip-clickable"
+              @click="openPerson(actor)"
+            >
+              {{ actor }}
+            </v-chip>
           </div>
         </div>
 
         <!-- Similar titles (recommendation mode only) -->
         <div v-if="item.similar_to?.length" class="mb-4">
-          <div class="text-overline text-medium-emphasis mb-1">Similar To</div>
+          <div class="text-overline text-medium-emphasis mb-1">Because You Liked</div>
           <div class="d-flex flex-wrap ga-1">
-            <v-chip
-              v-for="title in item.similar_to"
-              :key="title"
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-movie-filter"
+            <v-tooltip
+              v-for="ref in item.similar_to"
+              :key="ref.imdb_id"
+              :text="(ref.reasons ?? []).join(' • ') || `Similar to ${ref.title}`"
+              location="top"
             >
-              {{ title }}
-            </v-chip>
+              <template #activator="{ props: tp }">
+                <v-chip
+                  v-bind="tp"
+                  data-e2e="dialog-similar-to-chip"
+                  size="small"
+                  variant="tonal"
+                  color="secondary"
+                  prepend-icon="mdi-movie-filter"
+                  class="chip-clickable"
+                  @click="openFindSimilarRef(ref)"
+                >
+                  {{ ref.title }}
+                  <span v-if="ref.user_rating" class="ml-1 text-caption">★{{ ref.user_rating }}</span>
+                </v-chip>
+              </template>
+            </v-tooltip>
           </div>
         </div>
 
@@ -302,7 +477,7 @@ async function handleDismiss() {
 
       <v-divider />
 
-      <v-card-actions class="pa-3">
+      <v-card-actions class="pa-3 flex-wrap">
         <v-btn
           v-if="item.imdb_url"
           variant="tonal"
@@ -312,7 +487,30 @@ async function handleDismiss() {
           target="_blank"
           rel="noopener"
         >
-          View on IMDB
+          IMDB
+        </v-btn>
+        <v-btn
+          v-if="item.imdb_id"
+          data-e2e="btn-find-similar"
+          variant="tonal"
+          color="secondary"
+          prepend-icon="mdi-movie-search"
+          class="ml-2"
+          @click="openFindSimilar"
+        >
+          Find Similar
+        </v-btn>
+        <v-btn
+          v-if="item.imdb_id"
+          data-e2e="btn-dialog-watchlist"
+          variant="tonal"
+          :color="isWatchlisted ? 'primary' : 'default'"
+          :prepend-icon="isWatchlisted ? 'mdi-bookmark' : 'mdi-bookmark-outline'"
+          :loading="watchlistPending"
+          class="ml-2"
+          @click="toggleWatchlist"
+        >
+          {{ isWatchlisted ? 'Saved' : 'Save' }}
         </v-btn>
         <v-spacer />
         <v-btn
@@ -367,6 +565,10 @@ async function handleDismiss() {
   cursor: pointer;
 }
 
+.chip-clickable {
+  cursor: pointer;
+}
+
 .chip-exclude :deep(.v-chip__append .v-icon) {
   font-size: 12px;
   opacity: 0.5;
@@ -383,5 +585,91 @@ async function handleDismiss() {
   font-weight: 700;
   line-height: 1.3;
   word-break: break-word;
+}
+
+.detail-dialog {
+  position: relative;
+  overflow: hidden;
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 200px;
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.dialog-backdrop-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--v-theme-surface), 0.4) 0%,
+    rgba(var(--v-theme-surface), 0.85) 70%,
+    rgb(var(--v-theme-surface)) 100%
+  );
+}
+
+.over-backdrop {
+  position: relative;
+  z-index: 1;
+  min-height: 180px;
+  align-items: flex-end !important;
+}
+
+.trailer-wrap {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.trailer-iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.cast-row {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 12px;
+  padding: 4px 2px;
+  scrollbar-width: thin;
+}
+
+.cast-item {
+  flex: 0 0 auto;
+  width: 80px;
+  text-align: center;
+}
+
+.cast-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 4px;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cast-character {
+  font-size: 0.65rem;
+  opacity: 0.65;
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>

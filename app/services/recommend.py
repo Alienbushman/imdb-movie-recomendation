@@ -25,6 +25,7 @@ from app.models.schemas import (
     Recommendation,
     RecommendationFilters,
     RecommendationResponse,
+    SimilarToRef,
     TasteProfile,
 )
 from app.services.features import candidate_to_features
@@ -105,6 +106,35 @@ def _apply_runtime_filters(
         ]
         logger.info("  Filter max_runtime<=%d: %d → %d candidates", max_rt, before, len(result))
         before = len(result)
+    if filters.min_runtime is not None:
+        min_rt = filters.min_runtime
+        result = [
+            (c, fv, s)
+            for c, fv, s in result
+            if c.runtime_mins is not None and c.runtime_mins >= min_rt
+        ]
+        logger.info("  Filter min_runtime>=%d: %d → %d candidates", min_rt, before, len(result))
+        before = len(result)
+    if filters.keywords:
+        kw_incl = {k.lower() for k in filters.keywords}
+        result = [
+            (c, fv, s)
+            for c, fv, s in result
+            if kw_incl & {k.lower() for k in (c.keywords or [])}
+        ]
+        logger.info("  Filter keywords=%s: %d → %d candidates", kw_incl, before, len(result))
+        before = len(result)
+    if filters.exclude_keywords:
+        kw_excl = {k.lower() for k in filters.exclude_keywords}
+        result = [
+            (c, fv, s)
+            for c, fv, s in result
+            if not (kw_excl & {k.lower() for k in (c.keywords or [])})
+        ]
+        logger.info(
+            "  Filter exclude_keywords=%s: %d → %d candidates", kw_excl, before, len(result),
+        )
+        before = len(result)
     if filters.country_code is not None:
         cc = filters.country_code.upper()
         result = [
@@ -122,31 +152,89 @@ def _apply_runtime_filters(
 
 
 def _find_similar_rated(
-    candidate_genres: list[str],
+    candidate: "CandidateTitle | list[str]",
     rated_titles: list[RatedTitle],
     top_k: int = 3,
     min_rating: int = 7,
-) -> list[str]:
-    """Find highly-rated titles most similar to the candidate by genre overlap.
+) -> list[SimilarToRef]:
+    """Find highly-rated titles that share strong signals with ``candidate``.
 
-    Uses Jaccard similarity on genre sets so results reflect content similarity,
-    not inflated taste-profile scores. Falls back to all rated titles if none
-    meet the rating threshold.
+    Multi-signal similarity: genre Jaccard + director match + language match +
+    decade proximity. Each ref carries a short ``reasons`` list describing why
+    it was cited, and the user's personal rating so the UI can show
+    "Because you rated X 9/10".
+
+    Accepts either a full ``CandidateTitle`` (preferred, enables director /
+    language signals) or a bare genre list for backwards compatibility.
     """
+    if isinstance(candidate, list):
+        candidate_genres = candidate
+        candidate_directors: list[str] = []
+        candidate_language: str | None = None
+        candidate_year: int | None = None
+    else:
+        candidate_genres = candidate.genres
+        candidate_directors = candidate.directors
+        candidate_language = candidate.language
+        candidate_year = candidate.year
+
     pool = [rt for rt in rated_titles if rt.user_rating >= min_rating] or rated_titles
     if not pool:
         return []
 
     candidate_set = set(candidate_genres)
-    sims: list[tuple[float, str]] = []
+    director_set = {d.lower() for d in candidate_directors}
+
+    scored: list[tuple[float, RatedTitle, list[str]]] = []
     for rt in pool:
+        reasons: list[str] = []
         rated_set = set(rt.genres)
         union = candidate_set | rated_set
         jaccard = len(candidate_set & rated_set) / len(union) if union else 0.0
-        sims.append((jaccard, rt.title))
+        score = jaccard
 
-    sims.sort(reverse=True, key=lambda x: x[0])
-    return [title for sim, title in sims[:top_k] if sim > 0]
+        if director_set and any(d.lower() in director_set for d in rt.directors):
+            shared = next(
+                (d for d in rt.directors if d.lower() in director_set),
+                None,
+            )
+            if shared:
+                reasons.append(f"Same director: {shared}")
+                score += 0.6
+
+        if candidate_language and rt.language and candidate_language == rt.language:
+            score += 0.1
+
+        if candidate_year and rt.year:
+            year_gap = abs(candidate_year - rt.year)
+            if year_gap <= 5:
+                score += 0.08
+            elif year_gap <= 15:
+                score += 0.04
+
+        shared_genres = candidate_set & rated_set
+        if shared_genres:
+            top_genre = ", ".join(sorted(shared_genres)[:2])
+            reasons.append(f"Shares {top_genre}")
+
+        user_rating_label = f"rated {rt.user_rating}/10"
+        reasons.insert(0, f"You {user_rating_label}")
+
+        scored.append((score, rt, reasons))
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [
+        SimilarToRef(
+            imdb_id=rt.imdb_id,
+            title=rt.title,
+            title_type=rt.title_type,
+            year=rt.year,
+            user_rating=int(rt.user_rating) if rt.user_rating is not None else None,
+            reasons=reasons,
+        )
+        for sim, rt, reasons in scored[:top_k]
+        if sim > 0
+    ]
 
 
 def _find_director_match(
@@ -171,7 +259,7 @@ def _explain_prediction(
     feature_importances: dict[str, float],
     candidate: CandidateTitle,
     rated_titles: list[RatedTitle],
-    similar_titles: list[str],
+    similar_titles: list[SimilarToRef],
     top_k: int = 5,
 ) -> list[str]:
     """Generate human-readable explanations for why a title was recommended."""
@@ -210,9 +298,18 @@ def _explain_prediction(
     if candidate.actors:
         explanations.append(f"Stars {', '.join(candidate.actors[:3])}")
 
-    # Similar titles
+    # Similar titles — prefer a specific "Because you liked X (rating)" line
     if similar_titles:
-        explanations.append(f"Similar to {', '.join(similar_titles)} that you rated highly")
+        top = similar_titles[0]
+        if top.user_rating:
+            explanations.append(
+                f"Because you rated {top.title} {top.user_rating}/10"
+            )
+        else:
+            explanations.append(f"Similar to {top.title} that you enjoyed")
+        if len(similar_titles) > 1:
+            rest = ", ".join(s.title for s in similar_titles[1:])
+            explanations.append(f"Also reminiscent of {rest}")
 
     if not explanations:
         explanations.append("Matches your general taste profile")
@@ -319,7 +416,7 @@ def build_recommendations_from_scored(
         if score < min_score:
             continue
 
-        similar = _find_similar_rated(candidate.genres, rated_titles)
+        similar = _find_similar_rated(candidate, rated_titles)
 
         rec = Recommendation(
             title=candidate.title,

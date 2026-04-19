@@ -249,9 +249,15 @@ def get_recommendations_from_db(
     model = _state["model"]
     feature_names = _state["feature_names"]
     taste = _state["taste_profile"]
-    rated_titles = _state["titles"] or []
-    seen_ids = _state["seen_ids"] if _state["seen_ids"] is not None else set()
     mae = _state["mae"]
+
+    rated_titles = _state["titles"]
+    if not rated_titles:
+        from app.services.scored_store import load_rated_titles
+        rated_titles = load_rated_titles()
+        _state["titles"] = rated_titles  # cache so subsequent GET requests skip the DB read
+
+    seen_ids = _state["seen_ids"] if _state["seen_ids"] is not None else set()
 
     if model is None:
         loaded = load_taste_model()
@@ -327,7 +333,7 @@ def get_recommendations_from_db(
         result = []
         for candidate, score in candidates_with_scores:
             fv = candidate_to_features(candidate, taste)
-            similar = _find_similar_rated(candidate.genres, rated_titles)
+            similar = _find_similar_rated(candidate, rated_titles)
             result.append(
                 Recommendation(
                     title=candidate.title,

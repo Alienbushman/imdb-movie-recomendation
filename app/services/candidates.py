@@ -321,7 +321,31 @@ def _save_cache(data: list[dict]) -> None:
 
 _REQUIRED_CACHE_FIELDS = {
     "language", "languages", "writers", "composers", "cinematographers", "is_anime",
+    "keywords",
 }
+
+
+def _attach_tmdb_keywords(candidates: list[CandidateTitle]) -> int:
+    """Populate ``CandidateTitle.keywords`` from the TMDB metadata cache.
+
+    Reads ``data/cache/tmdb_metadata.json`` once and attaches keywords to any
+    candidate whose imdb_id is in the cache. No-op if the cache is missing.
+    Returns the number of candidates that received keywords.
+    """
+    from app.services.tmdb import _load_tmdb_cache
+
+    cache = _load_tmdb_cache()
+    if not cache:
+        return 0
+    enriched = 0
+    for c in candidates:
+        entry = cache.get(c.imdb_id)
+        if entry:
+            kws = entry.get("keywords") or []
+            if kws:
+                c.keywords = list(kws)
+                enriched += 1
+    return enriched
 
 
 def invalidate_stale_cache() -> bool:
@@ -837,11 +861,14 @@ def load_candidates_from_datasets(
         candidates = [CandidateTitle(**c) for c in cached]
         before = len(candidates)
         candidates = [c for c in candidates if c.imdb_id not in seen_ids]
+        kw_enriched = _attach_tmdb_keywords(candidates)
         logger.info(
-            "Using cached candidates: %d total, %d after excluding %d seen IDs (%.2fs)",
+            "Using cached candidates: %d total, %d after excluding %d seen IDs "
+            "(%d with TMDB keywords, %.2fs)",
             before,
             len(candidates),
             len(seen_ids),
+            kw_enriched,
             time.perf_counter() - t_total,
         )
         return candidates, None, None, None, None
@@ -1035,6 +1062,12 @@ def load_candidates_from_datasets(
                 is_anime=is_anime,
             )
         )
+
+    # Attach TMDB keywords from the tmdb metadata cache (if available).
+    # Done before writing to candidate cache so subsequent cache hits carry them.
+    kw_enriched = _attach_tmdb_keywords(candidates)
+    if kw_enriched:
+        logger.info("Attached TMDB keywords to %d candidates", kw_enriched)
 
     # Cache for next time
     _save_cache([c.model_dump() for c in candidates])
