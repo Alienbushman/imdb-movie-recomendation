@@ -47,10 +47,13 @@ export function useApi() {
     return fetchApi<RecommendationResponse>('/recommendations', { method: 'POST', query })
   }
 
-  function startRecommendations(filters?: RecommendationFilters, retrain = false, imdbUrl?: string) {
+  function startRecommendations(filters?: RecommendationFilters, retrain = false, imdbUrl?: string, force = false) {
     const query: Record<string, unknown> = { ...buildFilterQuery(filters), retrain }
     if (imdbUrl) {
       query.imdb_url = imdbUrl
+    }
+    if (force) {
+      query.force = true
     }
     return fetchApi<{ status: string }>('/recommendations/start', { method: 'POST', query })
   }

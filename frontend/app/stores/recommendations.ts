@@ -16,6 +16,9 @@ export const useRecommendationsStore = defineStore('recommendations', () => {
   // Set to true after a successful generate(), never reset to false.
   const pipelineReady = ref(false)
   const lastOperation = ref<'filter' | 'generate' | null>(null)
+  // Last IMDB ratings URL used with generate(). Persisted so the Rescrape button
+  // can re-fetch without the user re-entering the URL after a refresh or partial run.
+  const savedImdbUrl = ref<string>('')
 
   // Progress reporting while a generate() call is running. Populated by polling
   // GET /status; cleared when the pipeline finishes (success or error).
@@ -101,18 +104,21 @@ export const useRecommendationsStore = defineStore('recommendations', () => {
     console.log('[recommendations] waitForPipelineAndFetch — OK |', data.value.movies.length, 'movies,', data.value.series.length, 'series,', data.value.anime.length, 'anime')
   }
 
-  async function generate(retrain = false, imdbUrl?: string) {
-    console.log('[recommendations] generate — retrain:', retrain, '| pipelineReady:', pipelineReady.value)
+  async function generate(retrain = false, imdbUrl?: string, force = false) {
+    console.log('[recommendations] generate — retrain:', retrain, '| force:', force, '| pipelineReady:', pipelineReady.value)
     if (loading.value) {
       console.log('[recommendations] generate — already running, ignoring duplicate call')
       return
+    }
+    if (imdbUrl) {
+      savedImdbUrl.value = imdbUrl
     }
     loading.value = true
     error.value = null
     generateProgress.value = { step: 1, label: 'Starting…' }
     try {
       try {
-        await api.startRecommendations(filtersStore.buildFilters(), retrain, imdbUrl)
+        await api.startRecommendations(filtersStore.buildFilters(), retrain, imdbUrl, force)
       } catch (e: unknown) {
         const err = e as ApiError
         // 409 = a pipeline is already running (e.g. after a page refresh mid-run).
@@ -130,6 +136,18 @@ export const useRecommendationsStore = defineStore('recommendations', () => {
       loading.value = false
       generateProgress.value = null
     }
+  }
+
+  // Force-refetch the IMDB ratings from the saved URL and re-run the pipeline.
+  // Bypasses the scored-cache shortcut via force=true so a partial/failed prior
+  // scrape can't leave us stuck serving cached scores.
+  async function rescrape() {
+    console.log('[recommendations] rescrape — savedImdbUrl:', savedImdbUrl.value)
+    if (!savedImdbUrl.value) {
+      error.value = 'No IMDB URL saved — enter one in Data Source first.'
+      return
+    }
+    return generate(false, savedImdbUrl.value, true)
   }
 
   // Attach to a pipeline run that's already in progress (e.g. started in a prior
@@ -232,8 +250,10 @@ export const useRecommendationsStore = defineStore('recommendations', () => {
     pipelineReady,
     lastOperation,
     generateProgress,
+    savedImdbUrl,
     currentList,
     generate,
+    rescrape,
     attachToRunningPipeline,
     loadOrGenerate,
     applyFilters,
@@ -242,6 +262,6 @@ export const useRecommendationsStore = defineStore('recommendations', () => {
   }
 }, {
   persist: {
-    pick: ['pipelineReady', 'lastOperation', 'sortBy'],
+    pick: ['pipelineReady', 'lastOperation', 'sortBy', 'savedImdbUrl'],
   },
 })

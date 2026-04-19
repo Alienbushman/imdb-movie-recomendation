@@ -167,6 +167,7 @@ onUnmounted(() => {
         :last-operation="recommendations.lastOperation"
         :model-accuracy="recommendations.data?.model_accuracy ?? null"
         @generate="(retrain, url) => recommendations.generate(retrain, url)"
+        @rescrape="recommendations.rescrape()"
         @csv-uploaded="handleCsvUpload"
       />
 

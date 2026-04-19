@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
+import { useRecommendationsStore } from '../stores/recommendations'
+
 defineProps<{
   loading: boolean
   lastOperation: 'filter' | 'generate' | null
@@ -7,10 +10,19 @@ defineProps<{
 
 const emit = defineEmits<{
   generate: [retrain: boolean, imdbUrl?: string]
+  rescrape: []
   csvUploaded: [file: File]
 }>()
 
-const imdbUrl = ref<string>('')
+const recommendations = useRecommendationsStore()
+const { savedImdbUrl } = storeToRefs(recommendations)
+
+// Bind the URL input to the persisted store value so the field stays populated
+// across refreshes and after partial/failed scrapes.
+const imdbUrl = computed({
+  get: () => savedImdbUrl.value,
+  set: (v: string | null) => { savedImdbUrl.value = v ?? '' },
+})
 const showDataSource = ref(false)
 
 function handleCsvUpload(files: File | File[] | null) {
@@ -40,6 +52,16 @@ function handleCsvUpload(files: File | File[] | null) {
       @click="emit('generate', true, imdbUrl || undefined)"
     >
       Retrain Model
+    </v-btn>
+    <v-btn
+      v-if="savedImdbUrl"
+      data-e2e="btn-rescrape"
+      variant="outlined"
+      prepend-icon="mdi-cloud-download"
+      :loading="loading"
+      @click="emit('rescrape')"
+    >
+      Rescrape from IMDB
     </v-btn>
     <v-btn
       variant="text"
