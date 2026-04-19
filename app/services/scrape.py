@@ -385,11 +385,12 @@ def fetch_imdb_ratings_csv(imdb_url: str, timeout: float = 120.0) -> str:
                 if total_expected and len(all_rows) >= total_expected:
                     break
 
-                # Navigate to next page with rate-limit delay
+                # Navigate to next page with rate-limit delay.
+                # IMDB supports SSR pagination via ?page=N query param;
+                # the previously-used ?paginationToken= is ignored and returns page 1.
                 time.sleep(_PAGE_DELAY)
                 page_num += 1
-                next_cursor = page_info.get("endCursor", "")
-                next_url = f"{ratings_url}?paginationToken={next_cursor}"
+                next_url = f"{ratings_url}?page={page_num}"
 
                 retries = 0
                 while retries <= max_retries:
