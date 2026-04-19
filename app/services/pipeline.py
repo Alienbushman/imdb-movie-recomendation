@@ -37,6 +37,66 @@ _state: dict = {
     "last_run": None,
 }
 
+# Progress tracking for async pipeline runs. Guarded by _progress_lock so
+# HTTP handlers can read status without blocking on the pipeline's own lock.
+_progress_lock = threading.Lock()
+_progress: dict = {
+    "running": False,
+    "step": None,
+    "step_label": None,
+    "error": None,
+    "started_at": None,
+    "finished_at": None,
+}
+
+
+def _set_progress(**kwargs) -> None:
+    with _progress_lock:
+        _progress.update(kwargs)
+
+
+def get_progress() -> dict:
+    """Return a shallow copy of the current progress dict."""
+    with _progress_lock:
+        return dict(_progress)
+
+
+def start_pipeline_async(
+    retrain: bool = False,
+    filters: RecommendationFilters | None = None,
+    imdb_url: str | None = None,
+    force: bool = False,
+) -> bool:
+    """Kick off the pipeline in a background thread.
+
+    Returns False if another run is already in progress (so the caller can
+    signal 409). Progress can then be polled via ``get_progress()``.
+    """
+    with _progress_lock:
+        if _progress["running"]:
+            return False
+        _progress.update(
+            running=True,
+            step=1,
+            step_label="Starting…",
+            error=None,
+            started_at=datetime.now(UTC).isoformat(),
+            finished_at=None,
+        )
+
+    def _run() -> None:
+        try:
+            run_pipeline(retrain=retrain, filters=filters, imdb_url=imdb_url, force=force)
+            _set_progress(step=None, step_label="Complete", error=None)
+        except Exception as e:
+            logger.exception("Async pipeline failed")
+            _set_progress(step=None, step_label=None, error=str(e))
+        finally:
+            _set_progress(running=False, finished_at=datetime.now(UTC).isoformat())
+
+    threading.Thread(target=_run, daemon=True).start()
+    return True
+
 
 def run_pipeline(
     retrain: bool = False,
@@ -69,6 +129,10 @@ def run_pipeline(
         logger.info("Pipeline started (retrain=%s, filters=%s)", retrain, filters is not None)
 
         # Step 1: Ingest
+        if imdb_url:
+            _set_progress(step=1, step_label="Fetching your IMDB ratings…")
+        else:
+            _set_progress(step=1, step_label="Loading your watchlist…")
         logger.info("Step 1/4: Ingesting watchlist")
         t0 = time.perf_counter()
         if imdb_url:
@@ -94,6 +158,7 @@ def run_pipeline(
         )
 
         # Step 2: Load candidates (before model so we get rated person data for taste)
+        _set_progress(step=2, step_label="Loading candidates from IMDB datasets…")
         logger.info("Step 2/4: Loading candidates from IMDB datasets")
         t0 = time.perf_counter()
         candidates, rated_actors, rated_writers, rated_composers, rated_cinematographers = (
@@ -114,6 +179,12 @@ def run_pipeline(
             )
 
         # Step 3: Train or load model
+        _set_progress(
+            step=3,
+            step_label=(
+                "Training taste model…" if retrain else "Preparing taste model…"
+            ),
+        )
         logger.info("Step 3/4: Preparing taste model (retrain=%s)", retrain)
         t0 = time.perf_counter()
         loaded = None if retrain else load_taste_model()
@@ -137,6 +208,7 @@ def run_pipeline(
             )
 
         # Step 4: Score and recommend
+        _set_progress(step=4, step_label="Scoring and ranking titles…")
         logger.info("Step 4/4: Scoring and ranking %d candidates", len(candidates))
         t0 = time.perf_counter()
         response, scored, _importances = build_recommendations(
@@ -382,6 +454,7 @@ def get_pipeline_status() -> PipelineStatus:
 
     settings = get_settings()
     watchlist_path = PROJECT_ROOT / settings.data.watchlist_path
+    progress = get_progress()
 
     return PipelineStatus(
         rated_titles_count=len(_state["titles"]) if _state["titles"] else 0,
@@ -392,4 +465,9 @@ def get_pipeline_status() -> PipelineStatus:
         datasets_downloading=is_datasets_downloading(),
         watchlist_ready=watchlist_path.exists() and watchlist_path.stat().st_size > 0,
         scored_db_ready=has_scored_results(),
+        pipeline_running=progress["running"],
+        pipeline_step=progress["step"],
+        pipeline_step_label=progress["step_label"],
+        pipeline_error=progress["error"],
+        pipeline_started_at=progress["started_at"],
     )

@@ -47,6 +47,14 @@ export function useApi() {
     return fetchApi<RecommendationResponse>('/recommendations', { method: 'POST', query })
   }
 
+  function startRecommendations(filters?: RecommendationFilters, retrain = false, imdbUrl?: string) {
+    const query: Record<string, unknown> = { ...buildFilterQuery(filters), retrain }
+    if (imdbUrl) {
+      query.imdb_url = imdbUrl
+    }
+    return fetchApi<{ status: string }>('/recommendations/start', { method: 'POST', query })
+  }
+
   async function uploadWatchlist(file: File): Promise<{ message: string }> {
     const formData = new FormData()
     formData.append('file', file)
@@ -130,6 +138,7 @@ export function useApi() {
 
   return {
     getRecommendations,
+    startRecommendations,
     filterRecommendations,
     uploadWatchlist,
     dismissTitle,

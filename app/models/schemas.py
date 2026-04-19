@@ -413,6 +413,28 @@ class PipelineStatus(BaseModel):
         default=False,
         description="Whether the scored candidates database has rows (fast-path available).",
     )
+    pipeline_running: bool = Field(
+        default=False,
+        description="Whether a pipeline run is currently executing in the background.",
+    )
+    pipeline_step: int | None = Field(
+        default=None,
+        description="Current pipeline step number (1-4) when running; null otherwise.",
+        examples=[2],
+    )
+    pipeline_step_label: str | None = Field(
+        default=None,
+        description="Human-readable label for the current pipeline step.",
+        examples=["Loading IMDB dataset candidates…"],
+    )
+    pipeline_error: str | None = Field(
+        default=None,
+        description="Error message from the most recent pipeline run, if it failed.",
+    )
+    pipeline_started_at: str | None = Field(
+        default=None,
+        description="ISO 8601 timestamp when the current/most-recent pipeline run began.",
+    )
 
 
 class DatasetDownloadResponse(BaseModel):

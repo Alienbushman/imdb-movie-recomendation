@@ -195,6 +195,11 @@ export interface PipelineStatus {
   datasets_downloading: boolean
   watchlist_ready: boolean
   scored_db_ready: boolean
+  pipeline_running: boolean
+  pipeline_step: number | null
+  pipeline_step_label: string | null
+  pipeline_error: string | null
+  pipeline_started_at: string | null
 }
 
 /** Shared interface for items displayed in RecommendationCard */

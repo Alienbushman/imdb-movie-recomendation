@@ -70,6 +70,22 @@ let statusPollInterval: ReturnType<typeof setInterval> | null = null
 async function initializeApp() {
   try {
     const status = await api.getStatus()
+    setupStatus.value = status
+
+    if (status.pipeline_running) {
+      // A pipeline run is already in progress (different tab, prior session, or
+      // a page refresh mid-run). Attach to it so the user sees progress and gets
+      // the results when it finishes — don't start a new run.
+      if (!status.watchlist_ready || !status.scored_db_ready) {
+        showSetupWizard.value = true
+        startStatusPolling()
+      } else {
+        showSetupWizard.value = false
+      }
+      recommendations.attachToRunningPipeline()
+      return
+    }
+
     if (status.watchlist_ready) {
       // Returning user — proceed with normal load flow
       showSetupWizard.value = false
@@ -77,7 +93,6 @@ async function initializeApp() {
     } else {
       // Fresh install — show wizard
       showSetupWizard.value = true
-      setupStatus.value = status
       startStatusPolling()
     }
   } catch {
@@ -136,6 +151,9 @@ onUnmounted(() => {
     <SetupWizard
       v-if="showSetupWizard"
       :status="setupStatus"
+      :generate-running="recommendations.loading"
+      :generate-progress="recommendations.generateProgress"
+      :generate-error="recommendations.error"
       @started="handleSetupStart"
     />
     <div class="d-flex" style="min-height: calc(100vh - 64px)">
@@ -151,6 +169,26 @@ onUnmounted(() => {
         @generate="(retrain, url) => recommendations.generate(retrain, url)"
         @csv-uploaded="handleCsvUpload"
       />
+
+      <!-- Inline progress banner while the pipeline is running from the main page -->
+      <v-alert
+        v-if="recommendations.loading && recommendations.generateProgress"
+        data-e2e="generate-progress-banner"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+      >
+        <div class="d-flex align-center ga-2">
+          <v-progress-circular indeterminate size="18" width="2" />
+          <span>
+            <strong v-if="recommendations.generateProgress.step">
+              Step {{ recommendations.generateProgress.step }}/4:
+            </strong>
+            {{ recommendations.generateProgress.label || 'Starting…' }}
+          </span>
+        </div>
+      </v-alert>
 
       <ActiveFilterSummary
         @remove-excluded-genre="removeExcludedGenreAndApply"

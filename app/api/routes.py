@@ -33,6 +33,7 @@ from app.services.pipeline import (
     get_pipeline_status,
     get_recommendations_from_db,
     run_pipeline,
+    start_pipeline_async,
 )
 from app.services.scored_store import (
     get_person,
@@ -484,6 +485,55 @@ def generate_recommendations(
             status_code=502,
             detail=f"Failed to fetch ratings: {e}",
         )
+
+
+@router.post(
+    "/recommendations/start",
+    summary="Start the recommendation pipeline asynchronously",
+    tags=["Recommendations"],
+    responses={
+        202: {"description": "Pipeline was started; poll GET /status for progress."},
+        409: {"description": "A pipeline run is already in progress."},
+    },
+    status_code=202,
+)
+def start_recommendations(
+    filters: FilterDeps,
+    retrain: bool = Query(
+        False,
+        description="Force retraining the LightGBM taste model from scratch.",
+    ),
+    imdb_url: str | None = Query(
+        None,
+        description=(
+            "IMDB user ratings URL. If provided, ratings are fetched from IMDB "
+            "instead of reading the local CSV."
+        ),
+    ),
+    force: bool = Query(
+        False,
+        description="Force a full pipeline re-run even if cached scores exist.",
+    ),
+):
+    """Kick off the recommendation pipeline in a background thread.
+
+    Returns immediately with ``202 Accepted`` so clients behind reverse proxies
+    with short timeouts (e.g. 60s) don't see a 504. Poll ``GET /status`` to
+    observe progress via the ``pipeline_running``, ``pipeline_step``, and
+    ``pipeline_step_label`` fields. Once ``pipeline_running`` flips back to
+    false, call ``POST /recommendations/filter`` to fetch the scored results.
+    """
+    logger.info(
+        "POST /recommendations/start — retrain=%s imdb_url=%s",
+        retrain,
+        imdb_url,
+    )
+    started = start_pipeline_async(
+        retrain=retrain, filters=filters, imdb_url=imdb_url, force=force
+    )
+    if not started:
+        raise HTTPException(status_code=409, detail="A pipeline run is already in progress.")
+    return {"status": "started"}
 
 
 @router.post(
