@@ -426,8 +426,19 @@ def fetch_imdb_ratings_csv(imdb_url: str, timeout: float = 120.0) -> str:
             "The ratings may be private or the user has no ratings."
         )
 
-    logger.info("Scraped %d ratings for user %s", len(all_rows), user_id)
-    csv_content = _rows_to_csv(all_rows)
+    # Paginated IMDB responses can overlap across pages — keep the last
+    # occurrence per imdb_id so the newest rating wins on repeats.
+    deduped: dict[str, dict] = {}
+    for row in all_rows:
+        deduped[row["Const"]] = row
+    if len(deduped) != len(all_rows):
+        logger.info(
+            "Deduped %d → %d rows (removed %d duplicates)",
+            len(all_rows), len(deduped), len(all_rows) - len(deduped),
+        )
+
+    logger.info("Scraped %d ratings for user %s", len(deduped), user_id)
+    csv_content = _rows_to_csv(list(deduped.values()))
     return csv_content
 
 

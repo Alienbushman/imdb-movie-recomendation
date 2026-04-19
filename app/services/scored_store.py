@@ -895,7 +895,7 @@ def write_rated_titles(titles: list) -> None:
         _ensure_schema(conn)
         conn.execute("DELETE FROM rated_titles")
         conn.executemany(
-            "INSERT INTO rated_titles "
+            "INSERT OR REPLACE INTO rated_titles "
             "(imdb_id, title, year, title_type, imdb_rating, num_votes, runtime_mins, "
             "genres, languages, user_rating) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
