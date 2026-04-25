@@ -34,8 +34,6 @@ export function useApi() {
     if (filters.top_n_series != null) query.top_n_series = filters.top_n_series
     if (filters.top_n_anime != null) query.top_n_anime = filters.top_n_anime
     if (filters.min_vote_count != null) query.min_vote_count = filters.min_vote_count
-    if (filters.keywords?.length) query.keywords = filters.keywords
-    if (filters.exclude_keywords?.length) query.exclude_keywords = filters.exclude_keywords
     return query
   }
 
@@ -100,10 +98,6 @@ export function useApi() {
     return fetchApi<TitleMedia>(`/title/${imdbId}/media`)
   }
 
-  function getPopularKeywords(limit = 60) {
-    return fetchApi<string[]>('/keywords/popular', { query: { limit } })
-  }
-
   function downloadDatasets() {
     return fetchApi<{ status: string }>('/download-datasets', { method: 'POST' })
   }
@@ -157,6 +151,5 @@ export function useApi() {
     removeFromWatchlist,
     getWatchlist,
     getTitleMedia,
-    getPopularKeywords,
   }
 }

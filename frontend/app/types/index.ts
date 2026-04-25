@@ -58,8 +58,6 @@ export interface RecommendationFilters {
   top_n_series?: number | null
   top_n_anime?: number | null
   min_vote_count?: number | null
-  keywords?: string[] | null
-  exclude_keywords?: string[] | null
 }
 
 export interface DismissResponse {
