@@ -100,12 +100,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div data-e2e="similar-page" class="d-flex" style="min-height: calc(100vh - 64px)">
+  <div data-e2e="similar-page" class="d-flex page-root">
     <!-- Persistent filter sidebar -->
     <FilterDrawer />
 
     <!-- Main content area -->
-    <div data-e2e="similar-content" class="flex-grow-1 pa-4 overflow-auto">
+    <div data-e2e="similar-content" class="flex-grow-1 page-content overflow-auto">
       <!-- Search bar -->
       <v-autocomplete
         :model-value="similar.selectedSeed"
@@ -121,8 +121,7 @@ onMounted(() => {
         variant="outlined"
         density="comfortable"
         hide-details
-        class="mb-4"
-        style="max-width: 600px"
+        class="mb-4 search-field"
         @update:search="onSearchUpdate"
         @update:model-value="onSeedSelected"
       >
@@ -161,7 +160,7 @@ onMounted(() => {
           density="compact"
           hide-details
           variant="outlined"
-          style="max-width: 180px"
+          class="sort-select"
           prepend-inner-icon="mdi-sort"
         />
       </div>
@@ -221,9 +220,39 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.page-root {
+  min-height: calc(100vh - 48px);
+}
+
+.page-content {
+  padding: 16px;
+}
+
+.search-field {
+  max-width: 600px;
+}
+
+.sort-select {
+  max-width: 180px;
+}
+
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   gap: 16px;
+}
+
+@media (max-width: 600px) {
+  .page-content {
+    padding: 12px;
+  }
+  .search-field,
+  .sort-select {
+    max-width: 100%;
+  }
+  .card-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
 }
 </style>

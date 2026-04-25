@@ -71,11 +71,19 @@ const emit = defineEmits<{
 <style scoped>
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   gap: 16px;
 }
 
 .card-grid--dense {
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+@media (max-width: 600px) {
+  .card-grid,
+  .card-grid--dense {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
 }
 </style>

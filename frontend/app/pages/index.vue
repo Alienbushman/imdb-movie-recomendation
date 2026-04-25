@@ -156,12 +156,12 @@ onUnmounted(() => {
       :generate-error="recommendations.error"
       @started="handleSetupStart"
     />
-    <div class="d-flex" style="min-height: calc(100vh - 64px)">
+    <div class="d-flex page-root">
     <!-- Persistent filter sidebar -->
     <FilterDrawer />
 
     <!-- Main content area -->
-    <div ref="contentArea" data-e2e="index-content" class="flex-grow-1 pa-4 overflow-auto content-area">
+    <div ref="contentArea" data-e2e="index-content" class="flex-grow-1 page-content overflow-auto content-area">
       <ActionsBar
         :loading="recommendations.loading"
         :last-operation="recommendations.lastOperation"
@@ -209,7 +209,7 @@ onUnmounted(() => {
           density="compact"
           hide-details
           variant="outlined"
-          style="max-width: 180px"
+          class="sort-select"
           prepend-inner-icon="mdi-sort"
         />
         <v-btn-toggle v-model="gridDense" data-e2e="grid-density-toggle" density="compact" variant="outlined" mandatory>
@@ -262,9 +262,31 @@ onUnmounted(() => {
   position: relative;
 }
 
+.page-root {
+  min-height: calc(100vh - 48px);
+}
+
+.page-content {
+  padding: 16px;
+}
+
+.sort-select {
+  max-width: 180px;
+}
+
 .content-area {
   background:
     radial-gradient(ellipse at top left, rgba(var(--v-theme-primary), 0.06) 0%, transparent 55%),
     radial-gradient(ellipse at bottom right, rgba(var(--v-theme-secondary), 0.05) 0%, transparent 55%);
+}
+
+@media (max-width: 600px) {
+  .page-content {
+    padding: 12px;
+  }
+  .sort-select {
+    max-width: 100%;
+    min-width: 140px;
+  }
 }
 </style>

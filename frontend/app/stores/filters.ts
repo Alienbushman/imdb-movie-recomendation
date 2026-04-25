@@ -55,8 +55,8 @@ export const useFiltersStore = defineStore('filters', () => {
   const topNSeries = ref<number | undefined>()
   const topNAnime = ref<number | undefined>()
   const minVoteCount = ref<number>(FILTER_DEFAULTS.minVoteCount)
-  const selectedKeywords = ref<string[]>([])
-  const excludedKeywords = ref<string[]>([])
+
+  const drawerOpen = ref<boolean>(false)
 
   const runtimeRange = computed({
     get: () => [minRuntime.value, maxRuntime.value] as [number, number],
@@ -99,8 +99,6 @@ export const useFiltersStore = defineStore('filters', () => {
     if (topNSeries.value != null) f.top_n_series = topNSeries.value
     if (topNAnime.value != null) f.top_n_anime = topNAnime.value
     if (minVoteCount.value > 0) f.min_vote_count = minVoteCount.value
-    if (selectedKeywords.value.length) f.keywords = [...selectedKeywords.value]
-    if (excludedKeywords.value.length) f.exclude_keywords = [...excludedKeywords.value]
 
     const result = Object.keys(f).length ? f : undefined
     console.log('[filters] buildFilters — result:', result)
@@ -159,20 +157,6 @@ export const useFiltersStore = defineStore('filters', () => {
     topNSeries.value = undefined
     topNAnime.value = undefined
     minVoteCount.value = FILTER_DEFAULTS.minVoteCount
-    selectedKeywords.value = []
-    excludedKeywords.value = []
-  }
-
-  function toggleKeyword(keyword: string) {
-    const idx = selectedKeywords.value.indexOf(keyword)
-    if (idx >= 0) selectedKeywords.value.splice(idx, 1)
-    else selectedKeywords.value.push(keyword)
-  }
-
-  function toggleExcludedKeyword(keyword: string) {
-    const idx = excludedKeywords.value.indexOf(keyword)
-    if (idx >= 0) excludedKeywords.value.splice(idx, 1)
-    else excludedKeywords.value.push(keyword)
   }
 
   const activeFilterSummary = computed(() => {
@@ -193,7 +177,6 @@ export const useFiltersStore = defineStore('filters', () => {
     if (topNSeries.value != null) labels.push(`${topNSeries.value} series`)
     if (topNAnime.value != null) labels.push(`${topNAnime.value} anime`)
     if (minVoteCount.value > FILTER_DEFAULTS.minVoteCount) labels.push(`≥ ${minVoteCount.value.toLocaleString()} votes`)
-    if (selectedKeywords.value.length) labels.push(`moods: ${selectedKeywords.value.slice(0, 2).join(', ')}${selectedKeywords.value.length > 2 ? '…' : ''}`)
     return labels
   })
 
@@ -213,8 +196,6 @@ export const useFiltersStore = defineStore('filters', () => {
       || topNSeries.value != null
       || topNAnime.value != null
       || minVoteCount.value > FILTER_DEFAULTS.minVoteCount
-      || selectedKeywords.value.length
-      || excludedKeywords.value.length
     )
   })
 
@@ -239,8 +220,7 @@ export const useFiltersStore = defineStore('filters', () => {
     topNSeries,
     topNAnime,
     minVoteCount,
-    selectedKeywords,
-    excludedKeywords,
+    drawerOpen,
     buildFilters,
     addExcludedGenre,
     removeExcludedGenre,
@@ -248,8 +228,6 @@ export const useFiltersStore = defineStore('filters', () => {
     removeSelectedLanguage,
     addExcludedLanguage,
     removeExcludedLanguage,
-    toggleKeyword,
-    toggleExcludedKeyword,
     resetFilters,
     activeFilterSummary,
     hasActiveFilters,

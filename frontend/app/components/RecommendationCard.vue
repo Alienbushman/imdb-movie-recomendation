@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import type { CardDisplayItem, SimilarToRef, TitleMedia } from '../types'
 import { useWatchlistStore } from '../stores/watchlist'
 
@@ -14,6 +15,7 @@ const emit = defineEmits<{
 
 const api = useApi()
 const watchlist = useWatchlistStore()
+const { mobile } = useDisplay()
 const dismissing = ref(false)
 const showAllExplanations = ref(false)
 const dialogOpen = ref(false)
@@ -256,13 +258,13 @@ async function openPerson(name: string) {
       </v-btn>
     </v-card-text>
 
-    <v-card-actions class="pt-0">
+    <v-card-actions class="pt-0 card-actions">
       <v-tooltip :text="isWatchlisted ? 'Remove from watchlist' : 'Save to watchlist'" location="top">
         <template #activator="{ props: tp }">
           <v-btn
             v-bind="tp"
             :data-e2e="`btn-watchlist-${item.imdb_id}`"
-            size="small"
+            :size="mobile ? 'default' : 'small'"
             variant="text"
             :color="isWatchlisted ? 'primary' : 'default'"
             :icon="isWatchlisted ? 'mdi-bookmark' : 'mdi-bookmark-outline'"
@@ -274,7 +276,7 @@ async function openPerson(name: string) {
       <v-spacer />
       <v-btn
         data-e2e="btn-dismiss"
-        size="small"
+        :size="mobile ? 'default' : 'small'"
         variant="text"
         color="error"
         prepend-icon="mdi-close-circle"
@@ -287,7 +289,13 @@ async function openPerson(name: string) {
   </v-card>
 
   <!-- Detail dialog -->
-  <v-dialog v-model="dialogOpen" max-width="720" scrollable>
+  <v-dialog
+    v-model="dialogOpen"
+    max-width="720"
+    scrollable
+    :fullscreen="mobile"
+    :transition="mobile ? 'dialog-bottom-transition' : 'dialog-transition'"
+  >
     <v-card class="detail-dialog">
       <!-- Backdrop hero -->
       <div
@@ -671,5 +679,27 @@ async function openPerson(name: string) {
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .recommendation-card:hover {
+    transform: none;
+  }
+  .title-text {
+    font-size: 1rem;
+  }
+  .card-actions {
+    padding: 8px 12px;
+  }
+  .dialog-title {
+    font-size: 1.125rem;
+  }
+  .cast-item {
+    width: 72px;
+  }
+  .chip-exclude,
+  .chip-clickable {
+    min-height: 28px;
+  }
 }
 </style>
