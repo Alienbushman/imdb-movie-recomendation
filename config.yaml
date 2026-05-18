@@ -40,15 +40,78 @@ features:
   max_genre_pairs: 15
 
 model:
+  # T1.1: Training objective. "lambdarank" (default) optimises NDCG directly via
+  # pairwise pseudo-labels — recommendations are inherently a ranking problem.
+  # "regression" keeps the legacy LGBMRegressor MAE-style behaviour.
+  objective: "lambdarank"
+  # Eval metric for early stopping / log output ("ndcg", "map", "mae", "rmse").
+  metric: "ndcg"
+  # k for ranking metrics (NDCG@k / MAP@k / Recall@k).
+  ndcg_at_k: 10
   # LightGBM hyperparameters
   n_estimators: 200
   learning_rate: 0.05
   max_depth: 6
   num_leaves: 31
   min_child_samples: 5
-  # Train/test split ratio
+  reg_alpha: 0.0
+  reg_lambda: 0.0
+  feature_fraction: 1.0
+  bagging_fraction: 1.0
+  bagging_freq: 0
+  # Train/test split ratio (used by both temporal and random modes)
   test_size: 0.2
   random_state: 42
+  # T1.3: Temporal vs random holdout. "temporal" = most-recent rate_date rows
+  # become the test set, which is the honest eval for taste drift.
+  split:
+    mode: "temporal"  # "temporal" | "random"
+  # T1.4: Recency decay weights. Older ratings shrink toward `min_weight`.
+  decay:
+    enabled: true
+    half_life_days: 730  # 2 years
+    min_weight: 0.05
+    fallback_weight: 0.5  # used when a row has no rate_date
+  # T2.9: Cross-validation. When enabled, NDCG@k is reported as mean ± std over
+  # n_folds expanding-window splits. Optuna uses this score when both flags on.
+  cv:
+    enabled: false
+    n_folds: 5
+    strategy: "temporal"  # "temporal" | "random"
+  # T1.2: Optuna hyperparameter tuning. Disabled by default — turn on for one-off
+  # tuning runs; persists best params back into the saved model metadata.
+  optuna:
+    enabled: false
+    n_trials: 25
+    timeout_seconds: 600
+  # T2.8: Wire dismissed titles into training as low-rating implicit negatives.
+  training:
+    use_dismissals: true
+    dismissal_label: 2.0
+    dismissal_weight: 0.3
+    # T3.13: Wire frontend feedback (thumbs up/down/not interested) into training.
+    use_feedback: true
+    feedback_up_label: 9.0
+    feedback_down_label: 3.0
+    feedback_not_interested_label: 2.0
+    feedback_weight: 0.3
+  # T1.5: SHAP-based explanations. Falls back to heuristic if SHAP fails.
+  shap:
+    enabled: true
+    top_k: 3
+
+similarity:
+  # T2.7: Similarity engine for /similar/{id}. "leaves" uses tree-leaf embeddings
+  # from the trained LGB model (Facebook GBDT+LR trick). "jaccard" is the legacy
+  # heuristic (genre Jaccard + binary director match).
+  method: "leaves"  # "leaves" | "jaccard"
+
+mmr:
+  # T2.6: Maximal Marginal Relevance re-ranking after scoring.
+  # lambda = 1.0 means pure relevance; 0.0 means pure diversity.
+  enabled: true
+  lambda_: 0.7
+  pool_size: 200  # top-N candidates considered for re-ranking (O(k^2) on this set)
 
 recommendations:
   # How many recommendations to return per category
