@@ -1,4 +1,4 @@
-import type { RecommendationFilters, RecommendationResponse, DismissResponse, DismissedListResponse, PipelineStatus, TitleSearchResult, SimilarResponse, PersonSearchResult, PersonTitlesResponse, WatchlistResponse, WatchlistListResponse, TitleMedia } from '../types'
+import type { RecommendationFilters, RecommendationResponse, DismissResponse, DismissedListResponse, PipelineStatus, TitleSearchResult, SimilarResponse, PersonSearchResult, PersonTitlesResponse, WatchlistResponse, WatchlistListResponse, TitleMedia, FeedbackEntry, FeedbackKind, FeedbackListResponse, TasteProfileResponse } from '../types'
 
 export function useApi() {
   const config = useRuntimeConfig()
@@ -98,6 +98,29 @@ export function useApi() {
     return fetchApi<TitleMedia>(`/title/${imdbId}/media`)
   }
 
+  // T3.13: Feedback
+  function recordFeedback(imdbId: string, kind: FeedbackKind) {
+    return fetchApi<FeedbackEntry>(`/feedback/${imdbId}`, {
+      method: 'POST',
+      body: { kind },
+    })
+  }
+
+  function clearFeedback(imdbId: string) {
+    return fetchApi<{ imdb_id: string; action: string }>(`/feedback/${imdbId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  function listFeedback() {
+    return fetchApi<FeedbackListResponse>('/feedback')
+  }
+
+  // T3.14: Taste profile
+  function getProfile() {
+    return fetchApi<TasteProfileResponse>('/profile')
+  }
+
   function downloadDatasets() {
     return fetchApi<{ status: string }>('/download-datasets', { method: 'POST' })
   }
@@ -151,5 +174,11 @@ export function useApi() {
     removeFromWatchlist,
     getWatchlist,
     getTitleMedia,
+    // T3.13
+    recordFeedback,
+    clearFeedback,
+    listFeedback,
+    // T3.14
+    getProfile,
   }
 }
