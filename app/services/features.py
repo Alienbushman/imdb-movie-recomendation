@@ -19,6 +19,7 @@ IMPORTANT: ``feature_vector_to_array()`` must produce columns in the exact same
 order for both training (``features_to_dataframe``) and inference. Adding a new
 field requires updating both functions and retraining the model.
 """
+
 import logging
 import math
 from collections import Counter, defaultdict
@@ -352,9 +353,7 @@ def rated_title_to_features(
         title.imdb_rating, title.num_votes, title.year, title.runtime_mins
     )
     pop_feats = _compute_popularity_features(title.num_votes, title.year)
-    taste_feats = _compute_taste_features(
-        title.directors, [], taste, writers=title.writers
-    )
+    taste_feats = _compute_taste_features(title.directors, [], taste, writers=title.writers)
     language_flags = _build_language_flags(title.language, top_languages)
     type_flags = _build_type_flags(title.title_type)
     genre_pairs = taste.genre_pairs if taste else []

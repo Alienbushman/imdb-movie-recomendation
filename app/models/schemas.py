@@ -128,15 +128,19 @@ class FeatureVector(BaseModel):
     has_known_composer: bool = False
     cinematographer_taste_score: float = 0.0
     has_known_cinematographer: bool = False
-    # Subtask 9: TMDB keyword features
-    keyword_affinity_score: float = 0.0
-    has_known_keywords: bool = False
-    keyword_overlap_count: int = 0
-    # Subtask 10: OMDb critic score features
-    rt_score: float = 0.0
-    metacritic_score: float = 0.0
-    imdb_rt_gap: float = 0.0
-    imdb_metacritic_gap: float = 0.0
+    # Subtask 9: TMDB keyword features.
+    # T2.10: keyword_affinity_score defaults to NaN so LGB learns "missing" as
+    # a separate signal instead of treating it as "no keywords found = bad".
+    keyword_affinity_score: float = float("nan")
+    has_known_keywords: bool = False  # stays binary 0/1
+    keyword_overlap_count: int = 0  # stays integer count (0 is meaningful)
+    # Subtask 10: OMDb critic score features.
+    # T2.10: zero-fill replaced with NaN — "no critic score" should not look
+    # like "score of 0" to the tree splits.
+    rt_score: float = float("nan")
+    metacritic_score: float = float("nan")
+    imdb_rt_gap: float = float("nan")
+    imdb_metacritic_gap: float = float("nan")
 
 
 class TitleSearchResult(BaseModel):
@@ -182,9 +186,7 @@ class PersonSearchResult(BaseModel):
     name_id: str
     name: str
     primary_profession: str | None = None
-    title_count: int = Field(
-        description="Number of scored titles featuring this person."
-    )
+    title_count: int = Field(description="Number of scored titles featuring this person.")
 
 
 class PersonTitleResult(BaseModel):
@@ -656,3 +658,93 @@ class TitleMedia(BaseModel):
         default=False,
         description="True if TMDB metadata was successfully fetched.",
     )
+
+
+# --- T3.13: Feedback (thumbs up/down/not interested) -----------------------
+
+
+FEEDBACK_KIND_VALUES = ("up", "down", "not_interested")
+
+
+class FeedbackPayload(BaseModel):
+    """POST body for /feedback/{imdb_id}."""
+
+    kind: str = Field(
+        description="One of 'up' | 'down' | 'not_interested'.",
+        examples=["up"],
+    )
+
+
+class FeedbackEntry(BaseModel):
+    """Persisted feedback record returned to the UI."""
+
+    imdb_id: str
+    kind: str
+    at: str = Field(description="ISO 8601 timestamp the feedback was recorded.")
+
+
+class FeedbackListResponse(BaseModel):
+    """All feedback records keyed by imdb_id."""
+
+    entries: list[FeedbackEntry] = []
+    count: int = 0
+
+
+# --- T3.14: Taste profile ---------------------------------------------------
+
+
+class TasteGenreStat(BaseModel):
+    name: str
+    mean_rating: float
+    count: int
+
+
+class TastePersonStat(BaseModel):
+    name: str
+    mean_rating: float
+    count: int
+
+
+class TasteDecadeStat(BaseModel):
+    decade: int
+    mean_rating: float
+    count: int
+
+
+class TasteLanguageStat(BaseModel):
+    language: str
+    count: int
+
+
+class TasteRuntimeBucket(BaseModel):
+    label: str
+    count: int
+
+
+class TasteHealth(BaseModel):
+    """Model freshness/health snapshot shown as a footer on the profile page."""
+
+    trained_at: str | None = None
+    objective: str | None = None
+    ndcg_at_k: float | None = None
+    map_at_k: float | None = None
+    spearman: float | None = None
+    feature_count: int | None = None
+    best_params: dict = Field(default_factory=dict)
+
+
+class TasteProfileResponse(BaseModel):
+    """Full payload for GET /profile."""
+
+    rated_count: int = 0
+    rating_distribution: dict[int, int] = Field(default_factory=dict)
+    top_genres: list[TasteGenreStat] = []
+    top_directors: list[TastePersonStat] = []
+    top_actors: list[TastePersonStat] = []
+    top_writers: list[TastePersonStat] = []
+    top_composers: list[TastePersonStat] = []
+    top_cinematographers: list[TastePersonStat] = []
+    decade_distribution: list[TasteDecadeStat] = []
+    language_distribution: list[TasteLanguageStat] = []
+    runtime_histogram: list[TasteRuntimeBucket] = []
+    health: TasteHealth = Field(default_factory=TasteHealth)

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { useDisplay } from 'vuetify'
-import type { CardDisplayItem, SimilarToRef, TitleMedia } from '../types'
+import type { CardDisplayItem, FeedbackKind, SimilarToRef, TitleMedia } from '../types'
 import { useWatchlistStore } from '../stores/watchlist'
+import { useFeedbackStore } from '../stores/feedback'
 
 const props = defineProps<{
   item: CardDisplayItem
@@ -15,6 +16,7 @@ const emit = defineEmits<{
 
 const api = useApi()
 const watchlist = useWatchlistStore()
+const feedback = useFeedbackStore()
 const { mobile } = useDisplay()
 const dismissing = ref(false)
 const showAllExplanations = ref(false)
@@ -22,6 +24,18 @@ const dialogOpen = ref(false)
 const media = ref<TitleMedia | null>(null)
 const mediaLoading = ref(false)
 const mediaFetched = ref(false)
+
+// T3.13: feedback state for this card.
+const currentFeedback = computed(() => feedback.current(props.item.imdb_id))
+const feedbackPending = computed(() => feedback.isPending(props.item.imdb_id))
+async function setFeedback(kind: FeedbackKind) {
+  if (!props.item.imdb_id) return
+  try {
+    await feedback.toggle(props.item.imdb_id, kind)
+  } catch {
+    // handled in store
+  }
+}
 
 const visibleGenres = computed(() => props.item.genres.slice(0, 4))
 const extraGenres = computed(() => Math.max(0, props.item.genres.length - 4))
@@ -270,6 +284,35 @@ async function openPerson(name: string) {
             :icon="isWatchlisted ? 'mdi-bookmark' : 'mdi-bookmark-outline'"
             :loading="watchlistPending"
             @click.stop="toggleWatchlist"
+          />
+        </template>
+      </v-tooltip>
+      <!-- T3.13: Thumb up / down feedback signals (folded into the next training pass) -->
+      <v-tooltip :text="currentFeedback === 'up' ? 'Clear feedback' : 'Good recommendation'" location="top">
+        <template #activator="{ props: tp }">
+          <v-btn
+            v-bind="tp"
+            :data-e2e="`btn-feedback-up-${item.imdb_id}`"
+            :size="mobile ? 'default' : 'small'"
+            variant="text"
+            :color="currentFeedback === 'up' ? 'success' : 'default'"
+            :icon="currentFeedback === 'up' ? 'mdi-thumb-up' : 'mdi-thumb-up-outline'"
+            :loading="feedbackPending"
+            @click.stop="setFeedback('up')"
+          />
+        </template>
+      </v-tooltip>
+      <v-tooltip :text="currentFeedback === 'down' ? 'Clear feedback' : 'Not for me'" location="top">
+        <template #activator="{ props: tp }">
+          <v-btn
+            v-bind="tp"
+            :data-e2e="`btn-feedback-down-${item.imdb_id}`"
+            :size="mobile ? 'default' : 'small'"
+            variant="text"
+            :color="currentFeedback === 'down' ? 'error' : 'default'"
+            :icon="currentFeedback === 'down' ? 'mdi-thumb-down' : 'mdi-thumb-down-outline'"
+            :loading="feedbackPending"
+            @click.stop="setFeedback('down')"
           />
         </template>
       </v-tooltip>

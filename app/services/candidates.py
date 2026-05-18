@@ -23,6 +23,7 @@ Key functions:
 - ``load_candidates`` — load from cache or rebuild from raw TSVs
 - ``invalidate_stale_cache`` — delete cache if schema is outdated
 """
+
 import gc
 import json
 import logging
@@ -187,20 +188,31 @@ _REGION_TO_LANG: dict[str, str] = {
     "XWW": "English",
 }
 
-_AMBIGUOUS_REGIONS: frozenset[str] = frozenset({
-    "IN",  # Hindi, Tamil, Telugu, Malayalam, Kannada, ...
-    "BE",  # French and Dutch (Flemish)
-    "CH",  # German, French, Italian
-    "CA",  # English and French
-    "NG",  # Hausa, Yoruba, Igbo, English, ...
-    "ZW",  # Shona, Ndebele, English, ...
-})
+_AMBIGUOUS_REGIONS: frozenset[str] = frozenset(
+    {
+        "IN",  # Hindi, Tamil, Telugu, Malayalam, Kannada, ...
+        "BE",  # French and Dutch (Flemish)
+        "CH",  # German, French, Italian
+        "CA",  # English and French
+        "NG",  # Hausa, Yoruba, Igbo, English, ...
+        "ZW",  # Shona, Ndebele, English, ...
+    }
+)
 
 # Region codes that map to English and should be excluded when inferring a title's
 # original language from isOriginalTitle=1 rows (XWW = worldwide release).
-_ENGLISH_REGIONS: frozenset[str] = frozenset({
-    "US", "GB", "AU", "CA", "NZ", "IE", "ZA", "XWW",
-})
+_ENGLISH_REGIONS: frozenset[str] = frozenset(
+    {
+        "US",
+        "GB",
+        "AU",
+        "CA",
+        "NZ",
+        "IE",
+        "ZA",
+        "XWW",
+    }
+)
 
 # Rows per chunk when streaming large TSV files. 500K rows keeps each chunk
 # under ~100 MB in memory while scanning title.principals (100M+ rows total).
@@ -320,7 +332,12 @@ def _save_cache(data: list[dict]) -> None:
 
 
 _REQUIRED_CACHE_FIELDS = {
-    "language", "languages", "writers", "composers", "cinematographers", "is_anime",
+    "language",
+    "languages",
+    "writers",
+    "composers",
+    "cinematographers",
+    "is_anime",
     "keywords",
 }
 
@@ -369,9 +386,7 @@ def invalidate_stale_cache() -> bool:
         missing = _REQUIRED_CACHE_FIELDS - set(first.keys())
         if missing:
             path.unlink()
-            logger.info(
-                "Deleted stale candidate cache (missing fields: %s)", sorted(missing)
-            )
+            logger.info("Deleted stale candidate cache (missing fields: %s)", sorted(missing))
             return True
     except (json.JSONDecodeError, ValueError, KeyError):
         path.unlink()
@@ -553,9 +568,7 @@ def _build_person_dicts(
     return actors_by_title, composers_by_title, cinematographers_by_title
 
 
-def _resolve_names(
-    raw: dict[str, list[str]], name_lookup: dict[str, str]
-) -> dict[str, list[str]]:
+def _resolve_names(raw: dict[str, list[str]], name_lookup: dict[str, str]) -> dict[str, list[str]]:
     """Resolve a dict of tconst → [nconst, ...] to tconst → [name, ...]."""
     resolved: dict[str, list[str]] = {}
     for tconst, nconsts in raw.items():
@@ -567,14 +580,14 @@ def _resolve_names(
 
 _SCRIPT_RANGES: list[tuple[int, int, str]] = [
     # (start_codepoint, end_codepoint, language)
-    (0x3040, 0x30FF, "Japanese"),   # Hiragana + Katakana
-    (0x31F0, 0x31FF, "Japanese"),   # Katakana phonetic extensions
-    (0xAC00, 0xD7AF, "Korean"),     # Hangul syllables
-    (0x1100, 0x11FF, "Korean"),     # Hangul jamo
-    (0x0600, 0x06FF, "Arabic"),     # Arabic
-    (0x0750, 0x077F, "Arabic"),     # Arabic supplement
-    (0x0E00, 0x0E7F, "Thai"),       # Thai
-    (0x0590, 0x05FF, "Hebrew"),     # Hebrew
+    (0x3040, 0x30FF, "Japanese"),  # Hiragana + Katakana
+    (0x31F0, 0x31FF, "Japanese"),  # Katakana phonetic extensions
+    (0xAC00, 0xD7AF, "Korean"),  # Hangul syllables
+    (0x1100, 0x11FF, "Korean"),  # Hangul jamo
+    (0x0600, 0x06FF, "Arabic"),  # Arabic
+    (0x0750, 0x077F, "Arabic"),  # Arabic supplement
+    (0x0E00, 0x0E7F, "Thai"),  # Thai
+    (0x0590, 0x05FF, "Hebrew"),  # Hebrew
 ]
 
 
@@ -724,9 +737,7 @@ def _load_language_data(
         for tid in remaining:
             orig = (original_titles or {}).get(tid) or ""
             prim = (primary_titles or {}).get(tid) or ""
-            if any(ord(c) > 127 for c in orig) or (
-                orig and prim and orig.lower() != prim.lower()
-            ):
+            if any(ord(c) > 127 for c in orig) or (orig and prim and orig.lower() != prim.lower()):
                 non_english_origin.add(tid)
 
         if non_english_origin:
@@ -809,9 +820,7 @@ def load_crew_for_rated_titles(
     names_path = PROJECT_ROOT / settings.imdb_datasets.name_basics
 
     if not principals_path.exists():
-        logger.warning(
-            "title.principals not found — actor crew for rated titles unavailable"
-        )
+        logger.warning("title.principals not found — actor crew for rated titles unavailable")
         return None, None, None
 
     rated_id_set = set(rated_ids)
@@ -1036,8 +1045,7 @@ def load_candidates_from_datasets(
         is_anime = tconst in anime_ids
         if not is_anime and "Animation" in genres:
             is_anime = (
-                country_by_title.get(tconst) == "JP"
-                or lang_by_title.get(tconst) == "Japanese"
+                country_by_title.get(tconst) == "JP" or lang_by_title.get(tconst) == "Japanese"
             )
 
         candidates.append(
@@ -1079,9 +1087,7 @@ def load_candidates_from_datasets(
         tid: composers_by_title[tid] for tid in seen_ids if tid in composers_by_title
     }
     rated_cinematographers = {
-        tid: cinematographers_by_title[tid]
-        for tid in seen_ids
-        if tid in cinematographers_by_title
+        tid: cinematographers_by_title[tid] for tid in seen_ids if tid in cinematographers_by_title
     }
     logger.info(
         "Loaded %d candidate titles from IMDB datasets in %.2fs "

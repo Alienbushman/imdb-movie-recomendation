@@ -15,6 +15,7 @@ Key functions:
 - ``search_people`` / ``get_person`` / ``query_titles_by_person`` — person-browse support
 - ``has_scored_results`` — fast check used by the startup fast-path
 """
+
 import csv
 import gzip
 import json
@@ -85,15 +86,12 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE scored_candidates ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'")
     except sqlite3.OperationalError:
         pass  # column already exists
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_score ON scored_candidates(predicted_score DESC)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_score ON scored_candidates(predicted_score DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_type ON scored_candidates(title_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_lang ON scored_candidates(language)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_year ON scored_candidates(year)")
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_anime "
-        "ON scored_candidates(is_anime, predicted_score DESC)"
+        "CREATE INDEX IF NOT EXISTS idx_anime ON scored_candidates(is_anime, predicted_score DESC)"
     )
     conn.execute("""
         CREATE TABLE IF NOT EXISTS people (
@@ -112,12 +110,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (imdb_id, name_id, role)
         )
     """)
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_title_people_name_id ON title_people (name_id)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_title_people_imdb_id ON title_people (imdb_id)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_title_people_name_id ON title_people (name_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_title_people_imdb_id ON title_people (imdb_id)")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rated_titles (
             imdb_id      TEXT PRIMARY KEY,
@@ -143,12 +137,12 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             pass  # column already exists
     # Additive migration for existing databases that only have the 4-column schema
     for col, ddl in [
-        ("imdb_rating",  "REAL"),
-        ("num_votes",    "INTEGER NOT NULL DEFAULT 0"),
+        ("imdb_rating", "REAL"),
+        ("num_votes", "INTEGER NOT NULL DEFAULT 0"),
         ("runtime_mins", "INTEGER"),
-        ("genres",       "TEXT NOT NULL DEFAULT '[]'"),
-        ("languages",    "TEXT NOT NULL DEFAULT '[]'"),
-        ("user_rating",  "REAL"),
+        ("genres", "TEXT NOT NULL DEFAULT '[]'"),
+        ("languages", "TEXT NOT NULL DEFAULT '[]'"),
+        ("user_rating", "REAL"),
     ]:
         try:
             conn.execute(f"ALTER TABLE rated_titles ADD COLUMN {col} {ddl}")
@@ -246,9 +240,7 @@ def save_scored(scored: list[tuple[CandidateTitle, float]]) -> None:
             rows,
         )
         # Rebuild FTS index for title search
-        conn.execute(
-            "INSERT INTO scored_candidates_fts(scored_candidates_fts) VALUES('rebuild')"
-        )
+        conn.execute("INSERT INTO scored_candidates_fts(scored_candidates_fts) VALUES('rebuild')")
         # Accumulate title names in the persistent lookup table (never cleared)
         # so dismissed titles remain resolvable by name across pipeline runs.
         conn.executemany(
@@ -321,13 +313,15 @@ def _resolve_from_basics(imdb_ids: set[str]) -> list[dict]:
                 genres = []
                 if row.get("genres") and row["genres"] != "\\N":
                     genres = [g.strip() for g in row["genres"].split(",")]
-                found.append({
-                    "imdb_id": row["tconst"],
-                    "title": row["primaryTitle"],
-                    "year": year,
-                    "title_type": row.get("titleType"),
-                    "genres": genres,
-                })
+                found.append(
+                    {
+                        "imdb_id": row["tconst"],
+                        "title": row["primaryTitle"],
+                        "year": year,
+                        "title_type": row.get("titleType"),
+                        "genres": genres,
+                    }
+                )
                 if len(found) == len(imdb_ids):
                     break
     return found
@@ -373,8 +367,13 @@ def get_titles_from_lookup(imdb_ids: list[str]) -> dict[str, dict]:
                     "(imdb_id, title, year, title_type, genres) "
                     "VALUES (?,?,?,?,?)",
                     [
-                        (r["imdb_id"], r["title"], r["year"],
-                         r["title_type"], json.dumps(r["genres"]))
+                        (
+                            r["imdb_id"],
+                            r["title"],
+                            r["year"],
+                            r["title_type"],
+                            json.dumps(r["genres"]),
+                        )
                         for r in resolved
                     ],
                 )
@@ -383,7 +382,8 @@ def get_titles_from_lookup(imdb_ids: list[str]) -> dict[str, dict]:
                     result[r["imdb_id"]] = r
                 logger.info(
                     "Resolved %d/%d missing titles from IMDB basics",
-                    len(resolved), len(missing),
+                    len(resolved),
+                    len(missing),
                 )
 
         return result
@@ -459,10 +459,7 @@ def query_all_candidates_lightweight(
                 params.append(filters.country_code)
 
         where_clause = f"WHERE {' AND '.join(where)}" if where else ""
-        sql = (
-            f"SELECT * FROM scored_candidates {where_clause} "
-            f"ORDER BY num_votes DESC"
-        )
+        sql = f"SELECT * FROM scored_candidates {where_clause} ORDER BY num_votes DESC"
         rows = conn.execute(sql, params).fetchall()
     except sqlite3.OperationalError:
         return []
@@ -471,19 +468,12 @@ def query_all_candidates_lightweight(
 
     # Apply genre + keyword filters in Python (same pattern as query_candidates)
     needs_python_filter = filters and (
-        filters.genres
-        or filters.exclude_genres
-        or filters.keywords
-        or filters.exclude_keywords
+        filters.genres or filters.exclude_genres or filters.keywords or filters.exclude_keywords
     )
     if needs_python_filter:
-        keyword_incl = (
-            {k.lower() for k in filters.keywords} if filters.keywords else set()
-        )
+        keyword_incl = {k.lower() for k in filters.keywords} if filters.keywords else set()
         keyword_excl = (
-            {k.lower() for k in filters.exclude_keywords}
-            if filters.exclude_keywords
-            else set()
+            {k.lower() for k in filters.exclude_keywords} if filters.exclude_keywords else set()
         )
         filtered = []
         for row in rows:
@@ -648,9 +638,7 @@ def query_candidates(
     results: list[tuple[CandidateTitle, float]] = []
 
     keyword_incl_lower = (
-        {k.strip().lower() for k in filters.keywords}
-        if filters and filters.keywords
-        else set()
+        {k.strip().lower() for k in filters.keywords} if filters and filters.keywords else set()
     )
     keyword_excl_lower = (
         {k.strip().lower() for k in filters.exclude_keywords}
@@ -815,9 +803,7 @@ def query_titles_by_person(
         """
         all_params = sc_params + rt_params
 
-        total_row = conn.execute(
-            f"SELECT COUNT(*) FROM ({union_sql})", all_params
-        ).fetchone()
+        total_row = conn.execute(f"SELECT COUNT(*) FROM ({union_sql})", all_params).fetchone()
         total = total_row[0] if total_row else 0
 
         rows = conn.execute(
@@ -876,9 +862,7 @@ def write_people(
         # Rebuild FTS index for people name search
         conn.execute("INSERT INTO people_fts(people_fts) VALUES('rebuild')")
         conn.commit()
-        logger.info(
-            "Saved %d people and %d title-person rows", len(people), len(title_people)
-        )
+        logger.info("Saved %d people and %d title-person rows", len(people), len(title_people))
     finally:
         conn.close()
 
@@ -916,9 +900,7 @@ def write_rated_titles(titles: list) -> None:
             ],
         )
         # Rebuild FTS index for title search
-        conn.execute(
-            "INSERT INTO rated_titles_fts(rated_titles_fts) VALUES('rebuild')"
-        )
+        conn.execute("INSERT INTO rated_titles_fts(rated_titles_fts) VALUES('rebuild')")
         conn.commit()
         logger.info("Saved %d rated titles to rated_titles table", len(titles))
     finally:

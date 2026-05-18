@@ -7,6 +7,7 @@ page can render titles without re-querying the candidate cache.
 Watchlisted titles are *not* excluded from recommendations — they remain
 visible so users can confirm the saved item is the same one being recommended.
 """
+
 import json
 import logging
 import sqlite3

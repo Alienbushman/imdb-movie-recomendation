@@ -6,9 +6,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Upload
 
 from app.core.config import PROJECT_ROOT, get_settings
 from app.models.schemas import (
+    FEEDBACK_KIND_VALUES,
     DatasetDownloadResponse,
     DismissedListResponse,
     DismissResponse,
+    FeedbackEntry,
+    FeedbackListResponse,
+    FeedbackPayload,
     PersonSearchResult,
     PersonTitleResult,
     PersonTitlesResponse,
@@ -17,6 +21,7 @@ from app.models.schemas import (
     RecommendationFilters,
     RecommendationResponse,
     SimilarResponse,
+    TasteProfileResponse,
     TitleMedia,
     TitleSearchResult,
     WatchlistListResponse,
@@ -528,9 +533,7 @@ def start_recommendations(
         retrain,
         imdb_url,
     )
-    started = start_pipeline_async(
-        retrain=retrain, filters=filters, imdb_url=imdb_url, force=force
-    )
+    started = start_pipeline_async(retrain=retrain, filters=filters, imdb_url=imdb_url, force=force)
     if not started:
         raise HTTPException(status_code=409, detail="A pipeline run is already in progress.")
     return {"status": "started"}
@@ -934,3 +937,128 @@ def popular_keywords(
     from app.services.tmdb import top_keywords
 
     return top_keywords(limit)
+
+
+# ---------------------------------------------------------------------------
+# T3.13: Feedback (thumbs up / down / not interested)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/feedback/{imdb_id}",
+    response_model=FeedbackEntry,
+    summary="Record per-title feedback for the recommender",
+    tags=["Feedback"],
+    responses={
+        200: {"description": "Feedback recorded."},
+        400: {"description": "Unknown feedback kind."},
+    },
+)
+def post_feedback(
+    payload: FeedbackPayload,
+    imdb_id: str = Path(description="IMDB title ID.", pattern=r"^tt\d+$"),
+):
+    """Persist a feedback signal so the next training pass treats this title
+    as a labelled example (T3.13). Overwrites any prior feedback for this ID."""
+    from app.services.feedback import record_feedback
+
+    if payload.kind not in FEEDBACK_KIND_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"kind must be one of {FEEDBACK_KIND_VALUES}",
+        )
+    rec = record_feedback(imdb_id, payload.kind)
+    return FeedbackEntry(imdb_id=imdb_id, kind=rec["kind"], at=rec["at"])
+
+
+@router.delete(
+    "/feedback/{imdb_id}",
+    summary="Clear feedback for a title",
+    tags=["Feedback"],
+    responses={
+        200: {"description": "Feedback cleared."},
+        404: {"description": "No feedback recorded for this title."},
+    },
+)
+def delete_feedback(
+    imdb_id: str = Path(description="IMDB title ID.", pattern=r"^tt\d+$"),
+):
+    """Remove any stored feedback for this title."""
+    from app.services.feedback import clear_feedback
+
+    if not clear_feedback(imdb_id):
+        raise HTTPException(status_code=404, detail=f"No feedback recorded for {imdb_id}.")
+    return {"imdb_id": imdb_id, "action": "cleared"}
+
+
+@router.get(
+    "/feedback",
+    response_model=FeedbackListResponse,
+    summary="List all feedback records",
+    tags=["Feedback"],
+)
+def list_feedback():
+    """Return every feedback record. Used by the frontend to badge cards."""
+    from app.services.feedback import get_feedback_map
+
+    data = get_feedback_map()
+    entries = [
+        FeedbackEntry(imdb_id=imdb_id, kind=rec["kind"], at=rec["at"])
+        for imdb_id, rec in sorted(data.items())
+    ]
+    return FeedbackListResponse(entries=entries, count=len(entries))
+
+
+# ---------------------------------------------------------------------------
+# T3.14: Taste profile
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/profile",
+    response_model=TasteProfileResponse,
+    summary="Get the user's taste profile (top genres, directors, decades, ...)",
+    tags=["Profile"],
+    responses={
+        200: {"description": "Aggregated taste profile + model health footer."},
+    },
+)
+def get_profile():
+    """Aggregate the user's rated titles into the visualisations the /profile
+    page renders. Falls back to an empty payload if no watchlist has been
+    ingested yet."""
+    from app.services.candidates import load_crew_for_rated_titles
+    from app.services.ingest import load_watchlist
+    from app.services.pipeline import _state
+    from app.services.profile import build_taste_profile
+
+    titles = _state.get("titles")
+    if not titles:
+        try:
+            titles = load_watchlist()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Could not load watchlist for /profile: %s", e)
+            titles = []
+
+    if not titles:
+        from app.services.profile import build_taste_profile as _btp
+
+        return _btp([])
+
+    rated_actors: dict[str, list[str]] | None = None
+    rated_composers: dict[str, list[str]] | None = None
+    rated_cines: dict[str, list[str]] | None = None
+    try:
+        rated_actors, rated_composers, rated_cines = load_crew_for_rated_titles(
+            [t.imdb_id for t in titles]
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Could not load crew for /profile: %s", e)
+
+    return build_taste_profile(
+        titles,
+        rated_actors=rated_actors,
+        rated_writers=None,  # writers already live on RatedTitle
+        rated_composers=rated_composers,
+        rated_cinematographers=rated_cines,
+    )

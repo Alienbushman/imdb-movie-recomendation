@@ -181,9 +181,7 @@ def run_pipeline(
         # Step 3: Train or load model
         _set_progress(
             step=3,
-            step_label=(
-                "Training taste model…" if retrain else "Preparing taste model…"
-            ),
+            step_label=("Training taste model…" if retrain else "Preparing taste model…"),
         )
         logger.info("Step 3/4: Preparing taste model (retrain=%s)", retrain)
         t0 = time.perf_counter()
@@ -197,14 +195,44 @@ def run_pipeline(
                 len(feature_names),
             )
         else:
-            model, mae, feature_names, taste = train_taste_model(
-                titles, rated_actors, rated_writers, rated_composers, rated_cinematographers
+            # T2.8 + T3.13: pre-build taste profile so implicit-signal rows can
+            # be constructed from dismissals / feedback. We then rebuild it
+            # inside train_taste_model (cheap) so the trainer remains self-
+            # contained. This avoids a circular dep between
+            # implicit_signals.py and model.py without passing taste twice.
+            from app.services.features import build_taste_profile
+            from app.services.implicit_signals import build_implicit_training_rows
+
+            preview_taste = build_taste_profile(
+                titles,
+                rated_actors,
+                rated_writers,
+                rated_composers,
+                rated_cinematographers,
             )
+            extra_rows = build_implicit_training_rows(preview_taste)
+            model, mae, feature_names, taste = train_taste_model(
+                titles,
+                rated_actors,
+                rated_writers,
+                rated_composers,
+                rated_cinematographers,
+                extra_training_rows=extra_rows,
+            )
+            # T2.7: a fresh model invalidates the leaf-similarity cache.
+            try:
+                from app.services.leaf_similarity import invalidate_leaf_cache
+
+                invalidate_leaf_cache()
+            except Exception:  # noqa: BLE001
+                pass
             logger.info(
-                "Step 3/4 completed in %.2fs — trained new model (MAE=%.3f, %d features)",
+                "Step 3/4 completed in %.2fs — trained model "
+                "(MAE=%.3f, %d features, %d extra rows)",
                 time.perf_counter() - t0,
                 mae,
                 len(feature_names),
+                len(extra_rows),
             )
 
         # Step 4: Score and recommend
@@ -310,7 +338,11 @@ def get_recommendations_from_db(
     (e.g. after a server restart that preserved the DB file).
     """
     from app.services.features import candidate_to_features
-    from app.services.model import get_feature_importances
+    from app.services.model import (
+        explain_predictions,
+        get_feature_importances,
+        load_model_bundle,
+    )
     from app.services.recommend import _explain_prediction, _find_similar_rated
     from app.services.scored_store import query_candidates
 
@@ -326,6 +358,7 @@ def get_recommendations_from_db(
     rated_titles = _state["titles"]
     if not rated_titles:
         from app.services.scored_store import load_rated_titles
+
         rated_titles = load_rated_titles()
         _state["titles"] = rated_titles  # cache so subsequent GET requests skip the DB read
 
@@ -357,9 +390,7 @@ def get_recommendations_from_db(
         else rec_cfg.top_n_series
     )
     top_n_animation = (
-        filters.top_n_anime
-        if filters and filters.top_n_anime is not None
-        else rec_cfg.top_n_anime
+        filters.top_n_anime if filters and filters.top_n_anime is not None else rec_cfg.top_n_anime
     )
 
     movie_cfg = cat_cfg.get("movie")
@@ -401,11 +432,25 @@ def get_recommendations_from_db(
 
     importances = get_feature_importances(model, feature_names)
 
+    # T1.5: load SHAP-capable bundle once (None when disabled / unavailable).
+    shap_cfg = settings.model.shap
+    bundle = load_model_bundle() if shap_cfg.enabled else None
+
     def _build(candidates_with_scores: list[tuple[CandidateTitle, float]]) -> list[Recommendation]:
         result = []
-        for candidate, score in candidates_with_scores:
-            fv = candidate_to_features(candidate, taste)
+        if not candidates_with_scores:
+            return result
+        feats = [candidate_to_features(c, taste) for c, _ in candidates_with_scores]
+        shap_contribs_list: list[list[tuple[str, float]]] | None = None
+        if bundle is not None and bundle.get("shap_explainer") is not None:
+            try:
+                shap_contribs_list = explain_predictions(bundle, feats, top_k=shap_cfg.top_k)
+            except Exception:  # noqa: BLE001
+                shap_contribs_list = None
+        for idx, (candidate, score) in enumerate(candidates_with_scores):
+            fv = feats[idx]
             similar = _find_similar_rated(candidate, rated_titles)
+            contribs = shap_contribs_list[idx] if shap_contribs_list else None
             result.append(
                 Recommendation(
                     title=candidate.title,
@@ -415,7 +460,12 @@ def get_recommendations_from_db(
                     predicted_score=round(score, 2),
                     imdb_rating=candidate.imdb_rating,
                     explanation=_explain_prediction(
-                        fv, importances, candidate, rated_titles, similar
+                        fv,
+                        importances,
+                        candidate,
+                        rated_titles,
+                        similar,
+                        shap_contribs=contribs,
                     ),
                     actors=candidate.actors[:3],
                     director=candidate.directors[0] if candidate.directors else None,

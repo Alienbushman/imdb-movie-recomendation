@@ -184,6 +184,75 @@ export interface PersonTitlesResponse {
   results: PersonTitleResult[]
 }
 
+// T3.13: Feedback (thumbs up/down/not interested)
+export type FeedbackKind = 'up' | 'down' | 'not_interested'
+
+export interface FeedbackEntry {
+  imdb_id: string
+  kind: FeedbackKind
+  at: string
+}
+
+export interface FeedbackListResponse {
+  entries: FeedbackEntry[]
+  count: number
+}
+
+// T3.14: Taste profile
+
+export interface TasteGenreStat {
+  name: string
+  mean_rating: number
+  count: number
+}
+
+export interface TastePersonStat {
+  name: string
+  mean_rating: number
+  count: number
+}
+
+export interface TasteDecadeStat {
+  decade: number
+  mean_rating: number
+  count: number
+}
+
+export interface TasteLanguageStat {
+  language: string
+  count: number
+}
+
+export interface TasteRuntimeBucket {
+  label: string
+  count: number
+}
+
+export interface TasteHealth {
+  trained_at: string | null
+  objective: string | null
+  ndcg_at_k: number | null
+  map_at_k: number | null
+  spearman: number | null
+  feature_count: number | null
+  best_params: Record<string, unknown>
+}
+
+export interface TasteProfileResponse {
+  rated_count: number
+  rating_distribution: Record<string, number>
+  top_genres: TasteGenreStat[]
+  top_directors: TastePersonStat[]
+  top_actors: TastePersonStat[]
+  top_writers: TastePersonStat[]
+  top_composers: TastePersonStat[]
+  top_cinematographers: TastePersonStat[]
+  decade_distribution: TasteDecadeStat[]
+  language_distribution: TasteLanguageStat[]
+  runtime_histogram: TasteRuntimeBucket[]
+  health: TasteHealth
+}
+
 export interface PipelineStatus {
   rated_titles_count: number
   candidates_count: number

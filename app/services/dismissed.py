@@ -166,9 +166,7 @@ def get_dismissed_with_metadata() -> list[DismissedTitle]:
                     if cid in remaining:
                         lookup[cid] = c
                 found = len(lookup) - (len(ids) - len(remaining))
-                logger.info(
-                    "Resolved %d additional dismissed titles from cache", found
-                )
+                logger.info("Resolved %d additional dismissed titles from cache", found)
             except Exception:
                 logger.warning("Failed to read candidate cache for dismissed metadata")
 

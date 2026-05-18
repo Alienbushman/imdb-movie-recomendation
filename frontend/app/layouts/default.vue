@@ -2,9 +2,11 @@
 import { useDisplay } from 'vuetify'
 import { useWatchlistStore } from '../stores/watchlist'
 import { useFiltersStore } from '../stores/filters'
+import { useFeedbackStore } from '../stores/feedback'
 
 const watchlist = useWatchlistStore()
 const filters = useFiltersStore()
+const feedback = useFeedbackStore()
 const route = useRoute()
 const { mobile } = useDisplay()
 
@@ -18,6 +20,10 @@ function toggleFilterDrawer() {
 onMounted(() => {
   if (!watchlist.titles.length) {
     watchlist.fetchList()
+  }
+  // T3.13: preload feedback so cards already show the user's prior reactions.
+  if (!feedback.count) {
+    feedback.fetchList()
   }
 })
 </script>
@@ -48,6 +54,9 @@ onMounted(() => {
           </v-btn>
           <v-btn data-e2e="nav-similar" to="/similar" variant="text" prepend-icon="mdi-movie-search">
             Find Similar
+          </v-btn>
+          <v-btn data-e2e="nav-profile" to="/profile" variant="text" prepend-icon="mdi-chart-pie">
+            Taste
           </v-btn>
           <v-btn data-e2e="nav-watchlist" to="/watchlist" variant="text" prepend-icon="mdi-bookmark-multiple">
             Watchlist
@@ -84,6 +93,12 @@ onMounted(() => {
               to="/similar"
               prepend-icon="mdi-movie-search"
               title="Find Similar"
+            />
+            <v-list-item
+              data-e2e="nav-profile"
+              to="/profile"
+              prepend-icon="mdi-chart-pie"
+              title="Taste"
             />
             <v-list-item
               data-e2e="nav-watchlist"

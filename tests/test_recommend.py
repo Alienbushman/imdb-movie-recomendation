@@ -3,7 +3,7 @@
 
 from app.models.schemas import CandidateTitle, FeatureVector, RatedTitle, RecommendationFilters, SimilarToRef
 from app.services.features import ALL_GENRES, candidate_to_features
-from app.services.recommend import _apply_runtime_filters, _explain_prediction, _find_director_match
+from app.services.recommend import _apply_runtime_filters, _explain_prediction, _find_director_match, _humanize_feature
 
 # --- Helpers ---
 
@@ -328,3 +328,79 @@ class TestExplainPrediction:
         candidate = _make_candidate(actors=[], directors=[], genres=["Action"])
         explanations = _explain_prediction(fv, importances, candidate, [], [])
         assert any("Action" in e for e in explanations)
+
+    def test_shap_contribs_lead_explanations(self):
+        """T1.5: positive SHAP contributions appear first, formatted with contribution value."""
+        fv = self._make_feature_vector(imdb_rating=5.0)
+        candidate = _make_candidate(actors=[], directors=[])
+        shap_contribs = [
+            ("genre_affinity_drama", 0.42),
+            ("director_taste_score", 0.28),
+        ]
+        explanations = _explain_prediction(fv, {}, candidate, [], [], shap_contribs=shap_contribs)
+        assert len(explanations) >= 1
+        assert "+0.42" in explanations[0]
+
+    def test_shap_contribs_negative_values_skipped(self):
+        """T1.5: negative or zero contributions are not included as SHAP bullets."""
+        fv = self._make_feature_vector(imdb_rating=5.0)
+        candidate = _make_candidate(actors=[], directors=[])
+        shap_contribs = [
+            ("genre_affinity_drama", -0.30),
+            ("log_votes", -0.10),
+        ]
+        explanations = _explain_prediction(fv, {}, candidate, [], [], shap_contribs=shap_contribs)
+        assert not any("+−" in e or "+-" in e for e in explanations)
+
+    def test_shap_contribs_unknown_feature_skipped(self):
+        """T1.5: features not in _FEATURE_LABELS produce no bullet."""
+        fv = self._make_feature_vector(imdb_rating=5.0)
+        candidate = _make_candidate(actors=["DiCaprio"], directors=[])
+        shap_contribs = [
+            ("some_unknown_feature_xyz", 0.99),
+        ]
+        explanations = _explain_prediction(fv, {}, candidate, [], [], shap_contribs=shap_contribs)
+        assert not any("some_unknown" in e for e in explanations)
+
+    def test_shap_contribs_different_orderings_per_title(self):
+        """T1.5 acceptance: different shap_contribs yield different first bullets."""
+        fv = self._make_feature_vector(imdb_rating=5.0)
+        candidate = _make_candidate(actors=[], directors=[])
+
+        expl_a = _explain_prediction(
+            fv, {}, candidate, [], [],
+            shap_contribs=[("genre_affinity_drama", 0.5), ("director_taste_score", 0.1)],
+        )
+        expl_b = _explain_prediction(
+            fv, {}, candidate, [], [],
+            shap_contribs=[("actor_taste_score", 0.9), ("keyword_affinity_score", 0.4)],
+        )
+        assert expl_a[0] != expl_b[0]
+
+
+# --- _humanize_feature ---
+
+
+class TestHumanizeFeature:
+    def test_exact_match(self):
+        result = _humanize_feature("director_taste_score")
+        assert result == "directors you've liked before"
+
+    def test_prefix_match_with_placeholder(self):
+        result = _humanize_feature("genre_affinity_drama")
+        assert result is not None
+        assert "drama" in result.lower()
+
+    def test_prefix_match_genre(self):
+        result = _humanize_feature("genre_action")
+        assert result is not None
+        assert "action" in result.lower()
+
+    def test_unknown_feature_returns_none(self):
+        result = _humanize_feature("totally_unknown_xyz_feature")
+        assert result is None
+
+    def test_lang_prefix(self):
+        result = _humanize_feature("lang_french")
+        assert result is not None
+        assert "french" in result.lower()

@@ -14,6 +14,7 @@ Key functions:
 Results are persisted to SQLite by ``scored_store.write_candidates`` immediately after
 scoring; GET endpoints query the DB directly and do not call this module at serve time.
 """
+
 import logging
 import time
 
@@ -29,9 +30,66 @@ from app.models.schemas import (
     TasteProfile,
 )
 from app.services.features import candidate_to_features
-from app.services.model import get_feature_importances, predict_scores
+from app.services.model import explain_predictions, get_feature_importances, predict_scores
 
 logger = logging.getLogger(__name__)
+
+
+# T1.5: human-friendly labels for SHAP feature names. Any prefix-match below
+# wins; remaining text after the prefix is title-cased.
+_FEATURE_LABELS = {
+    "genre_affinity_": "matches your taste in {0}",
+    "genre_": "is a {0} title",
+    "lang_": "is in {0}",
+    "gpair_": "combines {0}",
+    "type_": "is a {0}",
+    "director_taste_score": "directors you've liked before",
+    "director_taste_mean": "your director track record",
+    "director_taste_count": "track record with these directors",
+    "has_known_director": "a director you've rated before",
+    "actor_taste_score": "actors you've liked",
+    "actor_taste_mean": "your actor track record",
+    "actor_taste_count": "multiple actors you've rated",
+    "has_known_actor": "an actor you've rated before",
+    "writer_taste_score": "writers you've liked",
+    "writer_taste_mean": "your writer track record",
+    "writer_taste_count": "multiple writers you've rated",
+    "has_known_writer": "a writer you've rated before",
+    "composer_taste_score": "composers you've liked",
+    "has_known_composer": "a composer you've rated before",
+    "cinematographer_taste_score": "cinematographers you've liked",
+    "has_known_cinematographer": "a cinematographer you've rated before",
+    "keyword_affinity_score": "themes/keywords you've enjoyed",
+    "has_known_keywords": "known themes from your watchlist",
+    "keyword_overlap_count": "multiple themes you've enjoyed",
+    "rt_score": "Rotten Tomatoes critics' verdict",
+    "metacritic_score": "Metacritic critics' verdict",
+    "imdb_rt_gap": "audience-critic split",
+    "imdb_metacritic_gap": "audience-critic split",
+    "imdb_rating": "high community rating",
+    "log_votes": "popularity",
+    "popularity_tier": "popularity tier",
+    "num_votes": "number of votes",
+    "title_age": "release era",
+    "decade": "decade",
+    "is_anime": "anime",
+    "rating_vote_ratio": "rating-to-votes balance",
+    "runtime_mins": "runtime",
+    "year": "release year",
+}
+
+
+def _humanize_feature(name: str) -> str | None:
+    """Return a short human phrase for a feature name, or None if unknown."""
+    if name in _FEATURE_LABELS:
+        return _FEATURE_LABELS[name]
+    for prefix, template in _FEATURE_LABELS.items():
+        if prefix.endswith("_") and name.startswith(prefix):
+            tail = name[len(prefix) :].replace("_", " ").title()
+            if "{0}" in template:
+                return template.format(tail)
+            return template
+    return None
 
 
 def _apply_runtime_filters(
@@ -118,9 +176,7 @@ def _apply_runtime_filters(
     if filters.keywords:
         kw_incl = {k.lower() for k in filters.keywords}
         result = [
-            (c, fv, s)
-            for c, fv, s in result
-            if kw_incl & {k.lower() for k in (c.keywords or [])}
+            (c, fv, s) for c, fv, s in result if kw_incl & {k.lower() for k in (c.keywords or [])}
         ]
         logger.info("  Filter keywords=%s: %d → %d candidates", kw_incl, before, len(result))
         before = len(result)
@@ -132,7 +188,10 @@ def _apply_runtime_filters(
             if not (kw_excl & {k.lower() for k in (c.keywords or [])})
         ]
         logger.info(
-            "  Filter exclude_keywords=%s: %d → %d candidates", kw_excl, before, len(result),
+            "  Filter exclude_keywords=%s: %d → %d candidates",
+            kw_excl,
+            before,
+            len(result),
         )
         before = len(result)
     if filters.country_code is not None:
@@ -261,50 +320,74 @@ def _explain_prediction(
     rated_titles: list[RatedTitle],
     similar_titles: list[SimilarToRef],
     top_k: int = 5,
+    shap_contribs: list[tuple[str, float]] | None = None,
 ) -> list[str]:
-    """Generate human-readable explanations for why a title was recommended."""
-    explanations = []
+    """Generate human-readable explanations for why a title was recommended.
+
+    T1.5: when ``shap_contribs`` is supplied, the top positive feature
+    attributions drive the first few bullets (so the order reflects actual
+    score impact, not a hard-coded priority ladder). The original heuristic
+    bullets are appended afterwards for color and as a fallback when SHAP is
+    unavailable.
+    """
+    explanations: list[str] = []
+
+    # T1.5: SHAP-driven leading bullets ------------------------------------
+    if shap_contribs:
+        for name, contrib in shap_contribs:
+            if contrib <= 0:
+                continue
+            phrase = _humanize_feature(name)
+            if phrase is None:
+                continue
+            explanations.append(f"{phrase.capitalize()} (+{contrib:.2f})")
+            if len(explanations) >= max(1, top_k - 2):
+                # Leave room for the personal "because you rated X" line.
+                break
 
     # Director match
     director_match = _find_director_match(candidate, rated_titles)
-    if director_match:
+    if director_match and director_match not in explanations:
         explanations.append(director_match)
 
-    # Known director/actor taste signals
-    if feature_vec.has_known_director and not director_match:
+    # Known director/actor taste signals — only when SHAP didn't already
+    # surface them.
+    if feature_vec.has_known_director and not any("director" in e.lower() for e in explanations):
         explanations.append("Director matches your taste profile")
-    if feature_vec.has_known_actor:
+    if feature_vec.has_known_actor and not any("actor" in e.lower() for e in explanations):
         explanations.append("Features actors from titles you enjoyed")
 
-    # Find the most important genre features that are active for this title
-    active_genres = [
-        (name.replace("genre_", "").replace("_", "-").title(), imp)
-        for name, imp in feature_importances.items()
-        if name.startswith("genre_") and feature_vec.genre_flags.get(name, 0) == 1
-    ]
-    active_genres.sort(key=lambda x: x[1], reverse=True)
+    # Find the most important genre features that are active for this title.
+    # Still useful as a top-level signal when SHAP didn't pick a genre.
+    if not any("taste in" in e.lower() or "is a " in e.lower() for e in explanations):
+        active_genres = [
+            (name.replace("genre_", "").replace("_", "-").title(), imp)
+            for name, imp in feature_importances.items()
+            if name.startswith("genre_") and feature_vec.genre_flags.get(name, 0) == 1
+        ]
+        active_genres.sort(key=lambda x: x[1], reverse=True)
+        if active_genres:
+            top_genre = active_genres[0][0]
+            explanations.append(f"Strong match on {top_genre} genre preference")
 
-    if active_genres:
-        top_genre = active_genres[0][0]
-        explanations.append(f"Strong match on {top_genre} genre preference")
-
-    if feature_vec.imdb_rating >= 7.5:
+    if feature_vec.imdb_rating >= 7.5 and not any(
+        "community rating" in e.lower() for e in explanations
+    ):
         explanations.append(f"High IMDb rating ({feature_vec.imdb_rating})")
 
-    if feature_vec.is_anime:
+    if feature_vec.is_anime and not any("anime" in e.lower() for e in explanations):
         explanations.append("Matches your anime interest")
 
     # Actors
-    if candidate.actors:
+    if candidate.actors and not any(a in " ".join(explanations) for a in candidate.actors[:3]):
         explanations.append(f"Stars {', '.join(candidate.actors[:3])}")
 
-    # Similar titles — prefer a specific "Because you liked X (rating)" line
+    # Similar titles — always include if available; this is the most personal
+    # signal we can show.
     if similar_titles:
         top = similar_titles[0]
         if top.user_rating:
-            explanations.append(
-                f"Because you rated {top.title} {top.user_rating}/10"
-            )
+            explanations.append(f"Because you rated {top.title} {top.user_rating}/10")
         else:
             explanations.append(f"Similar to {top.title} that you enjoyed")
         if len(similar_titles) > 1:
@@ -317,13 +400,54 @@ def _explain_prediction(
     return explanations[:top_k]
 
 
+def _apply_mmr(
+    scored: list[tuple[CandidateTitle, FeatureVector, float]],
+) -> list[tuple[CandidateTitle, FeatureVector, float]]:
+    """T2.6: re-order scored list with MMR for diversity.
+
+    Operates per category at call sites (movies/series/anime get re-ranked
+    independently after categorisation). Here we re-rank the global list once
+    so the eventual category split inherits the diversified ordering.
+    """
+    settings = get_settings()
+    if not settings.mmr.enabled or len(scored) < 3:
+        return scored
+
+    from app.services.mmr import mmr_rerank
+    from app.services.similar import compute_similarity_for_candidates
+
+    items = [c for c, _, _ in scored]
+    scores = [s for _, _, s in scored]
+    t0 = time.perf_counter()
+    new_order = mmr_rerank(
+        items,
+        scores,
+        similarity_fn=compute_similarity_for_candidates,
+        lambda_=settings.mmr.lambda_,
+        pool_size=settings.mmr.pool_size,
+    )
+    reranked = [scored[i] for i in new_order]
+    logger.info(
+        "MMR re-ranked top %d candidates in %.2fs (lambda=%.2f, pool=%d)",
+        min(settings.mmr.pool_size, len(scored)),
+        time.perf_counter() - t0,
+        settings.mmr.lambda_,
+        settings.mmr.pool_size,
+    )
+    return reranked
+
+
 def score_and_rank_candidates(
     model,
     feature_names: list[str],
     candidates: list[CandidateTitle],
     taste: TasteProfile | None = None,
 ) -> list[tuple[CandidateTitle, FeatureVector, float]]:
-    """Score all candidates and return them sorted by predicted rating."""
+    """Score all candidates and return them sorted by predicted rating.
+
+    T2.6: applies MMR diversity re-ranking to the top-N (configurable via
+    ``settings.mmr``).
+    """
     if not candidates:
         logger.info("No candidates to score")
         return []
@@ -344,7 +468,26 @@ def score_and_rank_candidates(
         scored[-1][2],
         scored[-1][0].title,
     )
+
+    scored = _apply_mmr(scored)
     return scored
+
+
+def _shap_contribs_for(
+    bundle: dict | None,
+    feature_vecs: list[FeatureVector],
+    top_k: int,
+) -> list[list[tuple[str, float]]] | None:
+    """T1.5: compute per-row top-k SHAP contributions, or None if unavailable."""
+    if bundle is None or not feature_vecs:
+        return None
+    if bundle.get("shap_explainer") is None:
+        return None
+    try:
+        return explain_predictions(bundle, feature_vecs, top_k=top_k)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("SHAP explanation failed, falling back to heuristic: %s", e)
+        return None
 
 
 def build_recommendations_from_scored(
@@ -360,10 +503,15 @@ def build_recommendations_from_scored(
     This is the fast path: scored results are reused across filter-only changes.
     """
     from app.services.dismissed import get_dismissed_ids
+    from app.services.model import load_model_bundle
 
     settings = get_settings()
     rec_cfg = settings.recommendations
     cat_cfg = settings.categories
+    shap_cfg = settings.model.shap
+
+    # T1.5: load the model bundle once so we can compute SHAP attributions.
+    bundle = load_model_bundle() if shap_cfg.enabled else None
 
     t0 = time.perf_counter()
 
@@ -405,10 +553,21 @@ def build_recommendations_from_scored(
         else rec_cfg.top_n_series
     )
     max_anime = (
-        filters.top_n_anime
-        if filters and filters.top_n_anime is not None
-        else rec_cfg.top_n_anime
+        filters.top_n_anime if filters and filters.top_n_anime is not None else rec_cfg.top_n_anime
     )
+
+    # T1.5: compute SHAP once for the top-N candidates we'll likely surface.
+    # We cap at (max_movies+max_series+max_anime)*3 to amortise the cost — SHAP
+    # for thousands of unused candidates would dominate the request time.
+    shap_pool_cap = max(50, (max_movies + max_series + max_anime) * 3)
+    shap_pool = filtered[:shap_pool_cap]
+    shap_contribs_pool = _shap_contribs_for(
+        bundle, [fv for _, fv, _ in shap_pool], top_k=shap_cfg.top_k
+    )
+    shap_by_id: dict[str, list[tuple[str, float]]] = {}
+    if shap_contribs_pool:
+        for (cand, _, _), contribs in zip(shap_pool, shap_contribs_pool):
+            shap_by_id[cand.imdb_id] = contribs
 
     for candidate, fv, score in filtered:
         if candidate.imdb_id in excluded_ids:
@@ -425,7 +584,14 @@ def build_recommendations_from_scored(
             genres=candidate.genres,
             predicted_score=round(score, 2),
             imdb_rating=candidate.imdb_rating,
-            explanation=_explain_prediction(fv, importances, candidate, rated_titles, similar),
+            explanation=_explain_prediction(
+                fv,
+                importances,
+                candidate,
+                rated_titles,
+                similar,
+                shap_contribs=shap_by_id.get(candidate.imdb_id),
+            ),
             actors=candidate.actors[:3],
             director=candidate.directors[0] if candidate.directors else None,
             similar_to=similar,
@@ -447,11 +613,7 @@ def build_recommendations_from_scored(
                 series.append(rec)
 
         # Early termination when all categories are full
-        if (
-            len(movies) >= max_movies
-            and len(series) >= max_series
-            and len(anime) >= max_anime
-        ):
+        if len(movies) >= max_movies and len(series) >= max_series and len(anime) >= max_anime:
             break
 
     logger.info(

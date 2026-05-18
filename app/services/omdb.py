@@ -97,9 +97,7 @@ def fetch_omdb_scores(imdb_ids: list[str]) -> dict[str, dict]:
                 data = resp.json()
                 if data.get("Response") == "True":
                     scores["rt"] = _parse_rt_score(data.get("Ratings", []))
-                    scores["metacritic"] = _parse_metacritic_score(
-                        data.get("Metascore")
-                    )
+                    scores["metacritic"] = _parse_metacritic_score(data.get("Metascore"))
             except (httpx.HTTPError, ValueError, KeyError):
                 pass
             cache[imdb_id] = scores
@@ -119,14 +117,26 @@ def compute_critic_features(
     """Compute critic score features for a single candidate.
 
     Returns rt_score, metacritic_score, imdb_rt_gap, imdb_metacritic_gap.
-    Missing scores default to 0.0.
+
+    T2.10: missing scores return NaN instead of 0.0 so LGB handles them as
+    "missing" (native NaN support) rather than treating absence as a real
+    low score. The model can then learn an optimal default direction at each
+    split point.
     """
+    import math
+
     entry = omdb_scores.get(imdb_id, {})
-    rt = entry.get("rt") or 0.0
-    mc = entry.get("metacritic") or 0.0
+    # `entry.get(...) or 0.0` collapsed both None and 0.0; we now preserve None
+    # as NaN so the gap features below correctly propagate NaN too.
+    rt_raw = entry.get("rt")
+    mc_raw = entry.get("metacritic")
+    rt = float(rt_raw) if rt_raw is not None else math.nan
+    mc = float(mc_raw) if mc_raw is not None else math.nan
     return {
         "rt_score": rt,
         "metacritic_score": mc,
+        # NaN - x = NaN automatically, so gap features stay missing when the
+        # underlying critic score is missing.
         "imdb_rt_gap": imdb_rating - rt,
         "imdb_metacritic_gap": imdb_rating - mc,
     }

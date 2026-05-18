@@ -29,15 +29,42 @@ _POSTER_SIZE = "w500"
 
 # Curated fallback list used when TMDB metadata is unavailable.
 DEFAULT_MOOD_TAGS = [
-    "dystopia", "time travel", "post-apocalyptic", "based on novel",
-    "feel-good", "dark comedy", "psychological thriller", "noir",
-    "coming of age", "found family", "heist", "revenge",
-    "slow burn", "mind bending", "twist ending", "one-shot",
-    "courtroom", "biography", "true story", "war",
-    "space", "cyberpunk", "magic", "fairy tale",
-    "family drama", "redemption", "satire", "mockumentary",
-    "road trip", "survival", "monster", "haunted house",
-    "spy", "assassin", "hacker", "vigilante",
+    "dystopia",
+    "time travel",
+    "post-apocalyptic",
+    "based on novel",
+    "feel-good",
+    "dark comedy",
+    "psychological thriller",
+    "noir",
+    "coming of age",
+    "found family",
+    "heist",
+    "revenge",
+    "slow burn",
+    "mind bending",
+    "twist ending",
+    "one-shot",
+    "courtroom",
+    "biography",
+    "true story",
+    "war",
+    "space",
+    "cyberpunk",
+    "magic",
+    "fairy tale",
+    "family drama",
+    "redemption",
+    "satire",
+    "mockumentary",
+    "road trip",
+    "survival",
+    "monster",
+    "haunted house",
+    "spy",
+    "assassin",
+    "hacker",
+    "vigilante",
 ]
 
 
@@ -138,17 +165,25 @@ def compute_keyword_features(
         keyword_affinity: User's average rating per keyword (from taste profile).
 
     Returns dict with keyword_affinity_score, has_known_keywords, keyword_overlap_count.
+
+    T2.10: ``keyword_affinity_score`` returns NaN when no keywords were matched
+    (or when TMDB data is unavailable). LGB then handles "no signal" via its
+    native missing-value support instead of conflating absence with a zero
+    affinity rating. has_known_keywords / keyword_overlap_count remain numeric
+    so the model can use them as an explicit "did we have data" flag.
     """
+    import math
+
     if not candidate_keywords or not keyword_affinity:
         return {
-            "keyword_affinity_score": 0.0,
+            "keyword_affinity_score": math.nan,
             "has_known_keywords": False,
             "keyword_overlap_count": 0,
         }
 
     matched = [keyword_affinity[kw] for kw in candidate_keywords if kw in keyword_affinity]
     return {
-        "keyword_affinity_score": sum(matched) / len(matched) if matched else 0.0,
+        "keyword_affinity_score": sum(matched) / len(matched) if matched else math.nan,
         "has_known_keywords": bool(matched),
         "keyword_overlap_count": len(matched),
     }
@@ -185,8 +220,7 @@ def _empty_media(imdb_id: str) -> dict:
 def _pick_trailer(videos: list[dict]) -> str | None:
     """Pick the best YouTube trailer from TMDB's videos response."""
     candidates = [
-        v for v in videos
-        if v.get("site") == "YouTube" and v.get("type") in ("Trailer", "Teaser")
+        v for v in videos if v.get("site") == "YouTube" and v.get("type") in ("Trailer", "Teaser")
     ]
     if not candidates:
         return None
@@ -244,13 +278,15 @@ def fetch_title_media(imdb_id: str) -> dict:
         cast = []
         for c in cast_raw:
             profile = c.get("profile_path")
-            cast.append({
-                "name": c.get("name", ""),
-                "character": c.get("character"),
-                "profile_url": (
-                    f"{_TMDB_IMG_BASE}/{_PROFILE_SIZE}{profile}" if profile else None
-                ),
-            })
+            cast.append(
+                {
+                    "name": c.get("name", ""),
+                    "character": c.get("character"),
+                    "profile_url": (
+                        f"{_TMDB_IMG_BASE}/{_PROFILE_SIZE}{profile}" if profile else None
+                    ),
+                }
+            )
 
         poster = data.get("poster_path")
         backdrop = data.get("backdrop_path")
@@ -258,9 +294,7 @@ def fetch_title_media(imdb_id: str) -> dict:
             "imdb_id": imdb_id,
             "trailer_url": _pick_trailer(videos),
             "poster_url": f"{_TMDB_IMG_BASE}/{_POSTER_SIZE}{poster}" if poster else None,
-            "backdrop_url": (
-                f"{_TMDB_IMG_BASE}/{_BACKDROP_SIZE}{backdrop}" if backdrop else None
-            ),
+            "backdrop_url": (f"{_TMDB_IMG_BASE}/{_BACKDROP_SIZE}{backdrop}" if backdrop else None),
             "overview": data.get("overview") or None,
             "cast": cast,
             "available": True,

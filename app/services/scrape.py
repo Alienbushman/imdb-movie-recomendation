@@ -23,9 +23,7 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
-_WEBDRIVER_PATCH = (
-    'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
-)
+_WEBDRIVER_PATCH = 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
 
 # Delay between page navigations to avoid IMDB rate-limiting.
 _PAGE_DELAY = 1.5  # seconds
@@ -128,9 +126,7 @@ def _extract_page_data(page) -> tuple[list[dict], dict, int]:
     Returns ([], {}, 0) if the page doesn't contain valid data.
     """
     content = page.content()
-    match = re.search(
-        r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', content, re.DOTALL
-    )
+    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', content, re.DOTALL)
     if not match:
         return [], {}, 0
 
@@ -191,9 +187,7 @@ def _build_csv_row(title_data: dict, user_rating: dict | None) -> dict | None:
     # Directors from principalCreditsV2
     directors = []
     for credit_group in title.get("principalCreditsV2", []):
-        group_text = (
-            credit_group.get("grouping", {}).get("text", "").lower()
-        )
+        group_text = credit_group.get("grouping", {}).get("text", "").lower()
         if "director" in group_text or "created by" in group_text:
             for credit in credit_group.get("credits", []):
                 name = credit.get("name", {}).get("nameText", {}).get("text")
@@ -212,12 +206,8 @@ def _build_csv_row(title_data: dict, user_rating: dict | None) -> dict | None:
         "Title": (title.get("titleText") or {}).get("text", ""),
         "Original Title": (title.get("originalTitleText") or {}).get("text", ""),
         "URL": f"https://www.imdb.com/title/{imdb_id}",
-        "Title Type": _extract_title_type(
-            (title.get("titleType") or {}).get("id", "")
-        ),
-        "IMDb Rating": (title.get("ratingsSummary") or {}).get(
-            "aggregateRating", ""
-        ),
+        "Title Type": _extract_title_type((title.get("titleType") or {}).get("id", "")),
+        "IMDb Rating": (title.get("ratingsSummary") or {}).get("aggregateRating", ""),
         "Runtime (mins)": runtime_mins,
         "Year": (title.get("releaseYear") or {}).get("year", ""),
         "Genres": ", ".join(genres_list),
@@ -435,7 +425,9 @@ def fetch_imdb_ratings_csv(imdb_url: str, timeout: float = 120.0) -> str:
     if len(deduped) != len(all_rows):
         logger.info(
             "Deduped %d → %d rows (removed %d duplicates)",
-            len(all_rows), len(deduped), len(all_rows) - len(deduped),
+            len(all_rows),
+            len(deduped),
+            len(all_rows) - len(deduped),
         )
 
     logger.info("Scraped %d ratings for user %s", len(deduped), user_id)

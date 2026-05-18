@@ -1,10 +1,17 @@
-"""Similarity engine for finding titles similar to a given seed."""
+"""Similarity engine for finding titles similar to a given seed.
+
+T2.7: ``find_similar`` dispatches by ``settings.similarity.method``. The
+``"leaves"`` path uses tree-leaf embeddings from the trained LightGBM model
+(see ``leaf_similarity.py``) and ``"jaccard"`` is the legacy heuristic kept
+as a fallback for when no model is available.
+"""
 
 import json
 import logging
 import sqlite3
 
 from app.models.schemas import (
+    CandidateTitle,
     RecommendationFilters,
     SimilarResponse,
     SimilarTitle,
@@ -123,6 +130,59 @@ def explain_similarity(
     return reasons
 
 
+def compute_similarity_for_candidates(a: CandidateTitle, b: CandidateTitle) -> float:
+    """T2.6: Wrap ``compute_similarity`` for CandidateTitle pairs.
+
+    Used by MMR (recommend.py) when re-ranking the scored top-N.
+    """
+    return compute_similarity(
+        set(a.genres),
+        a.directors,
+        a.actors,
+        a.language,
+        a.year,
+        a.imdb_rating,
+        set(b.genres),
+        b.directors,
+        b.actors,
+        b.language,
+        b.year,
+        b.imdb_rating,
+    )
+
+
+def compute_similarity_by_id(a_id: str, b_id: str) -> float:
+    """T2.7 + T3.15: Public single-pair similarity by ID for the eval harness.
+
+    Prefers the leaf-embedding path when a model is available; falls back to
+    the heuristic ``compute_similarity`` via a scored-DB lookup.
+    """
+    from app.services.leaf_similarity import pairwise_similarity_by_id
+
+    sim = pairwise_similarity_by_id(a_id, b_id)
+    if sim > 0.0:
+        return sim
+    # Fallback path
+    a_row = get_title_by_id(a_id)
+    b_row = get_title_by_id(b_id)
+    if a_row is None or b_row is None:
+        return 0.0
+    return compute_similarity(
+        set(json.loads(a_row["genres"])),
+        json.loads(a_row["directors"]),
+        json.loads(a_row["actors"]),
+        a_row["language"],
+        a_row["year"],
+        a_row["imdb_rating"],
+        set(json.loads(b_row["genres"])),
+        json.loads(b_row["directors"]),
+        json.loads(b_row["actors"]),
+        b_row["language"],
+        b_row["year"],
+        b_row["imdb_rating"],
+    )
+
+
 def find_similar(
     imdb_id: str,
     filters: RecommendationFilters | None,
@@ -140,6 +200,11 @@ def find_similar(
     Raises:
         ValueError: If scored DB is empty.
         LookupError: If seed title is not found.
+
+    T2.7: When ``settings.similarity.method == "leaves"`` (the default) and a
+    trained model is available, similarities come from tree-leaf overlap. The
+    Jaccard heuristic is kept as a fallback so the API never 500s when the
+    model is being retrained.
     """
     from app.services.pipeline import _state
 
@@ -197,6 +262,25 @@ def find_similar(
     # Query all candidates
     rows = query_all_candidates_lightweight(filters)
 
+    # T2.7: try leaf-embedding similarity first; fall back to Jaccard if the
+    # model isn't available or the seed isn't in the leaf cache (e.g. a rated
+    # title that never reached the candidate set).
+    settings = get_settings()
+    leaf_map: dict[str, float] | None = None
+    if settings.similarity.method == "leaves":
+        from app.services.leaf_similarity import find_similar_by_leaves
+
+        # Pull the full set so we can re-rank the filtered candidates ourselves
+        # rather than asking the leaf engine to know about filters.
+        leaf_pairs = find_similar_by_leaves(imdb_id, top_n=len(rows) + 1)
+        if leaf_pairs is not None:
+            leaf_map = {cid: s for cid, s in leaf_pairs}
+            logger.info(
+                "Using leaf-embedding similarity for %s (cache hits=%d)",
+                imdb_id,
+                len(leaf_map),
+            )
+
     # Score each candidate
     scored: list[tuple[float, sqlite3.Row]] = []
     for row in rows:
@@ -204,17 +288,29 @@ def find_similar(
         if cand_id == imdb_id:
             continue  # skip the seed itself
 
-        cand_genres = set(json.loads(row["genres"]))
-        cand_directors = json.loads(row["directors"])
-        cand_actors = json.loads(row["actors"])
-        cand_language = row["language"]
-        cand_year = row["year"]
-        cand_rating = row["imdb_rating"]
-
-        sim = compute_similarity(
-            seed_genres, seed_directors, seed_actors, seed_language, seed_year, seed_rating,
-            cand_genres, cand_directors, cand_actors, cand_language, cand_year, cand_rating,
-        )
+        if leaf_map is not None and cand_id in leaf_map:
+            sim = leaf_map[cand_id]
+        else:
+            cand_genres = set(json.loads(row["genres"]))
+            cand_directors = json.loads(row["directors"])
+            cand_actors = json.loads(row["actors"])
+            cand_language = row["language"]
+            cand_year = row["year"]
+            cand_rating = row["imdb_rating"]
+            sim = compute_similarity(
+                seed_genres,
+                seed_directors,
+                seed_actors,
+                seed_language,
+                seed_year,
+                seed_rating,
+                cand_genres,
+                cand_directors,
+                cand_actors,
+                cand_language,
+                cand_year,
+                cand_rating,
+            )
         scored.append((sim, row))
 
     # Sort by similarity descending
@@ -236,28 +332,38 @@ def find_similar(
         cand_actors = json.loads(row["actors"])
 
         explanation = explain_similarity(
-            seed_genres, seed_directors, seed_actors, seed_language, seed_year,
-            cand_genres, cand_directors, cand_actors, row["language"], row["year"],
+            seed_genres,
+            seed_directors,
+            seed_actors,
+            seed_language,
+            seed_year,
+            cand_genres,
+            cand_directors,
+            cand_actors,
+            row["language"],
+            row["year"],
         )
 
-        results.append(SimilarTitle(
-            title=row["title"],
-            title_type=row["title_type"],
-            year=row["year"],
-            genres=json.loads(row["genres"]),
-            imdb_rating=row["imdb_rating"],
-            predicted_score=row["predicted_score"],
-            similarity_score=round(sim_score, 4),
-            similarity_explanation=explanation,
-            actors=cand_actors[:3],
-            director=cand_directors[0] if cand_directors else None,
-            language=row["language"],
-            imdb_id=row["imdb_id"],
-            imdb_url=f"https://www.imdb.com/title/{row['imdb_id']}",
-            num_votes=row["num_votes"],
-            country_code=row["country_code"],
-            is_rated=row["imdb_id"] in rated_ids,
-        ))
+        results.append(
+            SimilarTitle(
+                title=row["title"],
+                title_type=row["title_type"],
+                year=row["year"],
+                genres=json.loads(row["genres"]),
+                imdb_rating=row["imdb_rating"],
+                predicted_score=row["predicted_score"],
+                similarity_score=round(sim_score, 4),
+                similarity_explanation=explanation,
+                actors=cand_actors[:3],
+                director=cand_directors[0] if cand_directors else None,
+                language=row["language"],
+                imdb_id=row["imdb_id"],
+                imdb_url=f"https://www.imdb.com/title/{row['imdb_id']}",
+                num_votes=row["num_votes"],
+                country_code=row["country_code"],
+                is_rated=row["imdb_id"] in rated_ids,
+            )
+        )
 
     return SimilarResponse(
         seed_title=seed_title,
