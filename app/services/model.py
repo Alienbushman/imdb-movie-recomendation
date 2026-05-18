@@ -641,7 +641,11 @@ def cross_validate(
     n_folds: int = 5,
     strategy: str = "temporal",
 ) -> dict[str, float]:
-    """Public CV entry point. Builds features, then dispatches to _cross_validate."""
+    """Public CV entry point. Builds features, then dispatches to _cross_validate.
+
+    For fewer than 100 ratings a leave-one-out schedule is used automatically
+    (each fold tests a single title) regardless of the requested n_folds.
+    """
     settings = get_settings()
     cfg = settings.model
     taste = build_taste_profile(titles, rated_actors)
@@ -671,6 +675,16 @@ def cross_validate(
         "bagging_freq": cfg.bagging_freq,
         "random_state": cfg.random_state,
     }
+    # LOO fallback: with fewer than 100 ratings, each fold tests a single title
+    # so every data point is evaluated exactly once.
+    effective_n_folds = max(1, len(titles) - 1) if len(titles) < 100 else n_folds
+    if effective_n_folds != n_folds:
+        logger.info(
+            "LOO CV fallback: %d ratings < 100, using %d folds instead of %d",
+            len(titles),
+            effective_n_folds,
+            n_folds,
+        )
     return _cross_validate(
         X_all=df,
         y_all=y,
@@ -681,7 +695,7 @@ def cross_validate(
         titles=titles,
         objective=cfg.objective,
         params=params,
-        n_folds=n_folds,
+        n_folds=effective_n_folds,
         strategy=strategy,
         k=cfg.ndcg_at_k,
     )
