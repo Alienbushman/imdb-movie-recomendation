@@ -340,7 +340,10 @@ def train_taste_model(
             by_source[r.source] = by_source.get(r.source, 0) + 1
         logger.info("Extra training rows merged: %s", by_source)
     else:
-        df_extra = pd.DataFrame(columns=df_rated.columns)
+        # Empty slice, not pd.DataFrame(columns=...): the latter is all-object
+        # dtype, and pd.concat would then upcast every numeric column to object,
+        # which LightGBM rejects.
+        df_extra = df_rated.iloc[0:0]
         extra_labels = np.array([], dtype=float)
         extra_weights = np.array([], dtype=float)
 
@@ -689,7 +692,7 @@ def cross_validate(
         X_all=df,
         y_all=y,
         w_all=w,
-        X_extra=pd.DataFrame(columns=df.columns),
+        X_extra=df.iloc[0:0],  # empty slice keeps numeric dtypes (see train_model)
         y_extra=np.array([]),
         w_extra=np.array([]),
         titles=titles,
