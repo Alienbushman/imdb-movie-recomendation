@@ -311,9 +311,45 @@ def _cache_path() -> Path:
     return cache_dir / "imdb_candidates.json"
 
 
+def _fingerprint_path() -> Path:
+    return _cache_path().with_suffix(".meta.json")
+
+
+def _filter_fingerprint() -> dict:
+    """The dataset filters that decide which titles are in the cache at all.
+
+    The cache is keyed on these because they are what produced it. Without this,
+    editing ``min_rating`` or ``min_year`` in config.yaml silently does nothing:
+    the pipeline reloads the old cache, logs a normal-looking candidate count and
+    the new filters never run. Lost an afternoon to exactly that on 2026-09-07.
+    """
+    ds = get_settings().imdb_datasets
+    return {
+        "min_vote_count": ds.min_vote_count,
+        "min_rating": ds.min_rating,
+        "min_year": ds.min_year,
+        "include_title_types": sorted(ds.include_title_types),
+    }
+
+
 def _load_cache() -> list[dict] | None:
     path = _cache_path()
     if path.exists():
+        want = _filter_fingerprint()
+        fp = _fingerprint_path()
+        have = None
+        if fp.exists():
+            try:
+                have = json.loads(fp.read_text())
+            except (OSError, json.JSONDecodeError):
+                have = None
+        if have != want:
+            logger.info(
+                "Candidate cache was built with different filters (%s != %s) — rebuilding",
+                have,
+                want,
+            )
+            return None
         t0 = time.perf_counter()
         logger.info("Loading cached candidates from %s (%.1f MB)", path, path.stat().st_size / 1e6)
         with open(path) as f:
@@ -328,6 +364,7 @@ def _save_cache(data: list[dict]) -> None:
     path = _cache_path()
     with open(path, "w") as f:
         json.dump(data, f)
+    _fingerprint_path().write_text(json.dumps(_filter_fingerprint(), indent=2))
     logger.info("Cached %d candidates to %s", len(data), path)
 
 

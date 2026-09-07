@@ -10,9 +10,20 @@ imdb_datasets:
   anime_list_url: "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json"
   # Minimum vote count to consider a title (filters out obscure titles)
   min_vote_count: 100
-  # Minimum IMDB rating to consider
+  # Minimum IMDB rating to consider.
+  # NOTE (2026-09-07): 5.0 provably makes part of this library unreachable —
+  # 14% of everything rated here that IMDB scores under 5.5 got 8+/10. Lowering
+  # it to 3.0 was tried and REVERTED: the pool grew 143k -> 195k and the top
+  # recommendations became obscure kids/TV titles (26 of the top 100 had under
+  # 1000 votes). Cause is the model, not the pool — `rating_vote_ratio` is
+  # imdb_rating / log1p(num_votes), the 2nd-heaviest feature, so it actively
+  # rewards obscurity and a wider pool just feeds it. Fix that feature first,
+  # then lower this. See tickets/023.
   min_rating: 5.0
-  # Earliest release year to include (0 = no filter)
+  # Earliest release year to include (0 = no filter).
+  # NOTE (2026-09-07): 1970 excludes the best-performing eras in this library
+  # (1950s 8.11, 1940s 7.29, vs 6.98 for 1970+). Reverted alongside min_rating
+  # for the same reason — see tickets/023.
   min_year: 1970
   # Title types to include from IMDB datasets
   include_title_types: ["movie", "tvSeries", "tvMiniSeries", "tvMovie"]
@@ -48,6 +59,10 @@ model:
   metric: "ndcg"
   # k for ranking metrics (NDCG@k / MAP@k / Recall@k).
   ndcg_at_k: 10
+  # Rating at or above which a holdout title is "relevant" for map/mrr/recall.
+  # At 7.0 these pinned to exactly 1.0000 (~47% of this library is rated 7+),
+  # so they measured nothing. 8.0 makes them discriminate again.
+  relevance_threshold: 8.0
   # LightGBM hyperparameters
   n_estimators: 200
   learning_rate: 0.05

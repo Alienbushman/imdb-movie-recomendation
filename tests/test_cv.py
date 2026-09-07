@@ -474,3 +474,47 @@ class TestCrossValidatePublic:
         ):
             result = cross_validate(titles, n_folds=5)
         assert isinstance(result, dict)
+
+
+# --- _compute_holdout_metrics: objective-aware + configurable relevance ---
+
+
+class TestHoldoutMetrics:
+    """Both behaviours here were wrong until 2026-09-07 and shipped nonsense
+    numbers into the eval table: mae/rmse were computed against lambdarank's
+    unbounded scores (reporting 12.57 on a 1-10 scale), and map/mrr used a 7.0
+    relevance bar that ~47% of a real library clears, pinning both to 1.0000."""
+
+    @staticmethod
+    def _fixture():
+        import numpy as np
+
+        y_true = np.array([9.0, 8.0, 7.0, 4.0, 2.0])
+        y_pred = np.array([40.0, 31.0, 22.0, 11.0, 3.0])  # ranking scores, not ratings
+        ids = ["tt1", "tt2", "tt3", "tt4", "tt5"]
+        return y_true, y_pred, ids
+
+    def test_mae_omitted_for_ranking_objective(self):
+        from app.services.model import _compute_holdout_metrics
+
+        y_true, y_pred, ids = self._fixture()
+        m = _compute_holdout_metrics(y_true, y_pred, ids, 3, objective="lambdarank")
+        assert "mae" not in m
+        assert "rmse" not in m
+        assert "ndcg_at_3" in m
+
+    def test_mae_present_for_regression_objective(self):
+        from app.services.model import _compute_holdout_metrics
+
+        y_true, y_pred, ids = self._fixture()
+        m = _compute_holdout_metrics(y_true, y_pred, ids, 3, objective="regression")
+        assert "mae" in m and "rmse" in m
+
+    def test_relevance_threshold_changes_relevant_count(self):
+        from app.services.model import _compute_holdout_metrics
+
+        y_true, y_pred, ids = self._fixture()
+        lenient = _compute_holdout_metrics(y_true, y_pred, ids, 3, relevance_threshold=7.0)
+        strict = _compute_holdout_metrics(y_true, y_pred, ids, 3, relevance_threshold=9.0)
+        assert lenient["n_relevant"] == 3.0
+        assert strict["n_relevant"] == 1.0

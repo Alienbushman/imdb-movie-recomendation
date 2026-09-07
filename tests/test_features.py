@@ -230,6 +230,20 @@ class TestBuildGenreAffinity:
         affinity = _build_genre_affinity(["Action"], taste)
         assert len(affinity) == len(ALL_GENRES)
 
+    def test_affinity_is_gated_on_the_titles_own_genres(self):
+        """Regression: the ``genres`` argument used to be ignored entirely.
+
+        Every title got the user's full genre-average vector, so all 23 columns
+        were identical for every row in the dataset and the splitter could never
+        use them. A title that is not a Drama must score 0.0 for Drama however
+        much the user likes Drama in general.
+        """
+        taste = TasteProfile(genre_avg={"Action": 8.5, "Drama": 6.0, "Horror": 9.0})
+        affinity = _build_genre_affinity(["Action"], taste)
+        assert affinity["genre_action_affinity"] == pytest.approx(8.5)
+        assert affinity["genre_drama_affinity"] == 0.0
+        assert affinity["genre_horror_affinity"] == 0.0
+
     def test_hyphenated_genre(self):
         taste = TasteProfile(genre_avg={"Sci-Fi": 9.0, "Film-Noir": 7.5})
         affinity = _build_genre_affinity(["Sci-Fi"], taste)

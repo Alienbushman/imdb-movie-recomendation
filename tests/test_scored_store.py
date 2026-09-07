@@ -183,3 +183,35 @@ def test_top_n_with_genre_filter_still_respects_limit(seeded_conn):
         min_score=0.0,
     )
     assert len(results) == 2
+
+
+# --- a category emptied by the global score floor falls back to its own top-N ---
+
+
+class TestEmptyCategoryFallback:
+    """Regression: /recommendations/anime returned [] on every run. Under
+    lambdarank the score is a batch-relative rank position, so one global floor
+    starves minority categories — the best of 4,096 anime scored 6.31 against a
+    6.5 floor."""
+
+    def test_empty_category_returns_top_n_below_floor(self, tmp_path, monkeypatch):
+        from app.models.schemas import CandidateTitle
+        from app.services import scored_store as S
+
+        monkeypatch.setattr(S, "_db_path", lambda: tmp_path / "scored.db")
+        rows = [
+            (CandidateTitle(imdb_id="tt-a1", title="Anime Low", original_title="Anime Low",
+                            title_type="movie", year=2020, genres=["Animation"],
+                            imdb_rating=7.5, num_votes=5000, is_anime=True), 3.0),
+            (CandidateTitle(imdb_id="tt-m1", title="Movie High", original_title="Movie High",
+                            title_type="movie", year=2020, genres=["Drama"],
+                            imdb_rating=7.5, num_votes=5000, is_anime=False), 9.0),
+        ]
+        S.save_scored(rows)
+
+        anime = S.query_candidates(None, None, True, 10, set(), min_score=6.5)
+        assert len(anime) == 1, "anime must fall back rather than return empty"
+        assert anime[0][0].imdb_id == "tt-a1"
+
+        movies = S.query_candidates(None, ["movie"], False, 10, set(), min_score=6.5)
+        assert [c.imdb_id for c, _ in movies] == ["tt-m1"], "a non-empty category is untouched"

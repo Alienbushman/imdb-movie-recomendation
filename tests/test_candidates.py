@@ -204,3 +204,32 @@ class TestWriterRoundTrip:
         assert "Writer B" in profile.writer_avg, "Writer B should be in taste profile"
         # Writer A appears in a 9-rated and a 6-rated film — avg pulled toward global mean
         assert 6.0 < profile.writer_avg["Writer A"] < 9.0
+
+
+# --- candidate cache is keyed on the filters that produced it ---
+
+
+class TestCacheFingerprint:
+    """Regression: editing min_rating/min_year in config.yaml used to be a
+    silent no-op — the pipeline reloaded a cache built under the old filters and
+    logged a normal-looking candidate count."""
+
+    def test_fingerprint_tracks_filter_config(self, monkeypatch, tmp_path):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_cache_path", lambda: tmp_path / "imdb_candidates.json")
+        rows = [{"imdb_id": "tt1"}]
+        C._save_cache(rows)
+        assert C._load_cache() == rows
+
+        original = C._filter_fingerprint()
+        monkeypatch.setattr(C, "_filter_fingerprint", lambda: {**original, "min_rating": 1.0})
+        assert C._load_cache() is None, "changed filters must invalidate the cache"
+
+    def test_missing_fingerprint_invalidates(self, monkeypatch, tmp_path):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_cache_path", lambda: tmp_path / "imdb_candidates.json")
+        C._save_cache([{"imdb_id": "tt1"}])
+        C._fingerprint_path().unlink()
+        assert C._load_cache() is None

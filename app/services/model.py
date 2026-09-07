@@ -248,27 +248,46 @@ def _fit_estimator(
 
 
 def _compute_holdout_metrics(
-    y_true: np.ndarray, y_pred: np.ndarray, test_ids: list[str], k: int
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    test_ids: list[str],
+    k: int,
+    objective: str = "regression",
+    relevance_threshold: float = 8.0,
 ) -> dict[str, float]:
-    """All ranking + regression metrics we surface in logs and the eval CLI."""
+    """All ranking + regression metrics we surface in logs and the eval CLI.
+
+    Two correctness notes, both fixed 2026-09-07:
+
+    * ``mae``/``rmse`` compare predictions to ratings, which only means anything
+      when the model predicts on the rating scale. Under ``lambdarank`` the
+      output is an unbounded relevance score, so these were reporting values
+      like 12.57 on a 1-10 scale. They are omitted for ranking objectives
+      rather than reported as nonsense.
+    * ``map``/``mrr`` were computed against a >= 7.0 relevance bar. With ~47% of
+      this library rated 7+, the top-ranked holdout item is almost always
+      "relevant", so both pinned to exactly 1.0000 and discriminated nothing.
+      The bar is now configurable and defaults to 8.0.
+    """
     if len(y_true) == 0:
         return {}
     ndcg = ndcg_at_k_from_scores(y_true.tolist(), y_pred.tolist(), k)
     by_pred = [tid for _, tid in sorted(zip(y_pred.tolist(), test_ids), reverse=True)]
-    relevant = {tid for tid, y in zip(test_ids, y_true) if y >= 7.0}
+    relevant = {tid for tid, y in zip(test_ids, y_true) if y >= relevance_threshold}
     ap = average_precision_at_k(by_pred, relevant, k)
     rr = mrr(by_pred, relevant)
     sp = spearman_corr(y_true.tolist(), y_pred.tolist())
-    mae = float(np.mean(np.abs(y_pred - y_true)))
-    rmse = float(np.sqrt(np.mean((y_pred - y_true) ** 2)))
-    return {
+    metrics = {
         f"ndcg_at_{k}": float(ndcg),
         f"map_at_{k}": float(ap),
         "mrr": float(rr),
         "spearman": float(sp),
-        "mae": mae,
-        "rmse": rmse,
+        "n_relevant": float(len(relevant)),
     }
+    if objective != "lambdarank":
+        metrics["mae"] = float(np.mean(np.abs(y_pred - y_true)))
+        metrics["rmse"] = float(np.sqrt(np.mean((y_pred - y_true) ** 2)))
+    return metrics
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +454,14 @@ def train_taste_model(
 
     # ------- Evaluate -------------------------------------------------------
     y_pred = np.asarray(model.predict(X_test), dtype=float)
-    metrics = _compute_holdout_metrics(y_test, y_pred, test_ids, cfg.ndcg_at_k)
+    metrics = _compute_holdout_metrics(
+        y_test,
+        y_pred,
+        test_ids,
+        cfg.ndcg_at_k,
+        objective=cfg.objective,
+        relevance_threshold=cfg.relevance_threshold,
+    )
     logger.info(
         "Holdout metrics: %s",
         ", ".join(f"{k}={v:.4f}" for k, v in metrics.items()),
@@ -610,6 +636,7 @@ def _cross_validate(
         ]
 
     scores: list[float] = []
+    spearmans: list[float] = []
     for fi, (tr, te) in enumerate(folds):
         if not tr or not te:
             continue
@@ -624,16 +651,28 @@ def _cross_validate(
             m = _fit_estimator(Xtr, ytr, wtr, objective=objective, params=params)
             preds = np.asarray(m.predict(Xte), dtype=float)
             score = ndcg_at_k_from_scores(yte.tolist(), preds.tolist(), k)
+            sp = spearman_corr(yte.tolist(), preds.tolist())
             scores.append(float(score))
-            logger.info("CV fold %d/%d: NDCG@%d=%.4f", fi + 1, len(folds), k, score)
+            spearmans.append(float(sp))
+            logger.info(
+                "CV fold %d/%d: NDCG@%d=%.4f spearman=%.4f", fi + 1, len(folds), k, score, sp
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning("CV fold %d failed: %s", fi + 1, e)
 
     if not scores:
         return {}
+    # sem is what tells you whether a change is real. Measured 2026-09-07 on a
+    # 2250-rating library, fold-to-fold std of NDCG@10 is ~0.17-0.20 while the
+    # feature changes under test moved the mean by ~0.05 — i.e. the differences
+    # sat well inside one std and this harness could not resolve them. Report
+    # the spread alongside the mean so that is visible rather than inferred.
     return {
         f"cv_ndcg_at_{k}_mean": float(np.mean(scores)),
         f"cv_ndcg_at_{k}_std": float(np.std(scores)),
+        f"cv_ndcg_at_{k}_sem": float(np.std(scores) / np.sqrt(len(scores))),
+        "cv_spearman_mean": float(np.mean(spearmans)),
+        "cv_spearman_std": float(np.std(spearmans)),
         "cv_folds_completed": float(len(scores)),
     }
 

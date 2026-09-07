@@ -153,9 +153,10 @@ def run(k: int = 10, top_n: int = 100, out_path: Path | None = None) -> dict:
     ndcg = ndcg_at_k_from_scores(y_true, y_pred, k)
     sp = spearman_corr(y_true, y_pred)
 
-    # Treat ratings >= 7 as "relevant" — same threshold the explanation engine
-    # uses for "similar rated titles".
-    relevant_ids = {t.imdb_id for t, r in zip(test, y_true) if r >= 7.0}
+    # Relevance bar for map/mrr/recall. Configurable because 7.0 made map and
+    # mrr pin to exactly 1.0000 on a library where ~47% of ratings are 7+.
+    threshold = settings.model.relevance_threshold
+    relevant_ids = {t.imdb_id for t, r in zip(test, y_true) if r >= threshold}
     test_ids = [t.imdb_id for t in test]
     # Rank the holdout titles by predicted score and check where the truly
     # relevant ones land.

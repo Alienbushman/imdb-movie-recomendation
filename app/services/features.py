@@ -185,13 +185,18 @@ def _build_genre_flags(genres: list[str]) -> dict[str, int]:
 
 
 def _build_genre_affinity(genres: list[str], taste: TasteProfile | None) -> dict[str, float]:
-    """Subtask 1: User's average rating per genre (0.0 if no rated titles in that genre)."""
+    """Subtask 1: User's average rating for THIS title's genres (0.0 for the rest).
+
+    The affinity is gated on the title actually carrying the genre. Returning
+    ``taste.genre_avg`` for every genre regardless — as this did until 2026-09-07
+    — makes the vector identical for every row in the dataset, so all 23 columns
+    are constant and the splitter can never use them.
+    """
+    keys = {g: f"genre_{g.lower().replace('-', '_')}_affinity" for g in ALL_GENRES}
     if taste is None:
-        return {f"genre_{g.lower().replace('-', '_')}_affinity": 0.0 for g in ALL_GENRES}
-    return {
-        f"genre_{g.lower().replace('-', '_')}_affinity": taste.genre_avg.get(g, 0.0)
-        for g in ALL_GENRES
-    }
+        return {k: 0.0 for k in keys.values()}
+    genre_set = {g.strip() for g in genres}
+    return {keys[g]: (taste.genre_avg.get(g, 0.0) if g in genre_set else 0.0) for g in ALL_GENRES}
 
 
 def _build_language_flags(language: str | None, top_languages: list[str]) -> dict[str, int]:

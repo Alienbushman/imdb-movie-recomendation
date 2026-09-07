@@ -102,6 +102,10 @@ class ModelConfig(BaseModel):
     objective: str = "lambdarank"  # "lambdarank" | "regression"
     metric: str = "ndcg"  # "ndcg" | "map" | "mae" | "rmse"
     ndcg_at_k: int = 10
+    # Rating at or above which a holdout title counts as "relevant" for
+    # map/mrr/recall. 7.0 made both pin to 1.0000 on a library where ~47% of
+    # ratings are 7+, so the metrics discriminated nothing.
+    relevance_threshold: float = 8.0
 
     # Core LGB hyperparameters
     n_estimators: int = 200

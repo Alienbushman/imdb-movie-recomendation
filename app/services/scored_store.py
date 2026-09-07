@@ -631,6 +631,35 @@ def query_candidates(
             f"ORDER BY predicted_score DESC"
         )
         rows = conn.execute(sql, params).fetchall()
+
+        # A category the score floor emptied entirely gets one retry without it.
+        #
+        # Under lambdarank, predict_scores() min-max rescales the batch to 1-10,
+        # so predicted_score is a title's rank position within *this* batch, not
+        # an absolute quality estimate. A single global floor therefore starves
+        # any minority category: measured 2026-09-07, the best of 4,096 anime
+        # candidates scored 6.31 against a 6.5 floor, so /recommendations/anime
+        # returned [] on every run while /movies returned a full page.
+        #
+        # Only fires when the result is empty, so a category that returned
+        # anything at all is untouched — this cannot change movie or series
+        # output. The user asked for this category; ranked-but-below-floor beats
+        # an empty tab.
+        if not rows and where[0] == "predicted_score >= ?":
+            retry_where = where[1:]
+            retry_params = params[1:]
+            retry_sql = (
+                f"SELECT * FROM scored_candidates "
+                f"{('WHERE ' + ' AND '.join(retry_where)) if retry_where else ''} "
+                f"ORDER BY predicted_score DESC LIMIT ?"
+            )
+            rows = conn.execute(retry_sql, [*retry_params, max(top_n, 1)]).fetchall()
+            if rows:
+                logger.info(
+                    "Score floor %.2f emptied this category — returning its top %d by rank instead",
+                    min_score,
+                    len(rows),
+                )
     finally:
         conn.close()
 
