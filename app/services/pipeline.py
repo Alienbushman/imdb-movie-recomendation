@@ -487,13 +487,19 @@ def get_recommendations_from_db(
     )
 
 
-def ensure_datasets() -> str:
-    """Download IMDB datasets if not present. Returns status message."""
-    logger.info("Ensuring IMDB datasets are present")
+def ensure_datasets(force: bool = False) -> str:
+    """Download IMDB datasets. Returns status message.
+
+    Args:
+        force: re-download files already on disk. Required for a genuine
+            refresh — without it every existing file is skipped.
+    """
+    logger.info("Ensuring IMDB datasets are present (force=%s)", force)
     t0 = time.perf_counter()
-    download_datasets()
-    logger.info("Dataset check completed in %.2fs", time.perf_counter() - t0)
-    return "Datasets ready."
+    download_datasets(force=force)
+    elapsed = time.perf_counter() - t0
+    logger.info("Dataset check completed in %.2fs", elapsed)
+    return f"Datasets refreshed in {elapsed:.1f}s." if force else "Datasets ready."
 
 
 def get_pipeline_status() -> PipelineStatus:

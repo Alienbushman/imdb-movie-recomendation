@@ -240,10 +240,10 @@ def _dataset_dir() -> Path:
     return PROJECT_ROOT / "data" / "datasets"
 
 
-def _download_anime_list() -> None:
+def _download_anime_list(force: bool = False) -> None:
     """Download the Fribb/anime-lists JSON if not already present."""
     dest = _dataset_dir() / "anime-list-mini.json"
-    if dest.exists():
+    if dest.exists() and not force:
         logger.info("Anime list already exists: %s", dest)
         return
     logger.info("Downloading anime list from Fribb/anime-lists ...")
@@ -261,33 +261,73 @@ def _load_anime_ids() -> set[str]:
         return set()
     with open(path) as f:
         entries = json.load(f)
-    ids = {entry["imdb_id"] for entry in entries if entry.get("imdb_id")}
-    logger.info("Loaded %d anime IMDB IDs from whitelist", len(ids))
+
+    # imdb_id is a string in older dumps and a list in current ones — one anime
+    # can map to several IMDB titles. As of the 2026-09-18 refresh the upstream
+    # file is 100% lists or nulls with no strings at all, so the string-only
+    # form both crashed ("unhashable type: 'list'") and, before that, would have
+    # silently produced an empty set. Accept both shapes.
+    ids: set[str] = set()
+    for entry in entries:
+        value = entry.get("imdb_id")
+        if not value:
+            continue
+        if isinstance(value, str):
+            ids.add(value)
+        elif isinstance(value, list):
+            ids.update(v for v in value if isinstance(v, str) and v)
+
+    if not ids:
+        # An empty whitelist is not a harmless default: is_anime silently falls
+        # back to a country/language heuristic and the anime category degrades
+        # without any error. Say so loudly.
+        logger.error(
+            "Anime whitelist parsed to 0 IDs from %d entries — upstream format "
+            "has probably changed again; is_anime will fall back to heuristics",
+            len(entries),
+        )
+    else:
+        logger.info("Loaded %d anime IMDB IDs from whitelist (%d entries)", len(ids), len(entries))
     return ids
 
 
-def download_datasets() -> None:
-    """Download IMDB dataset files if they don't already exist."""
+def download_datasets(force: bool = False) -> None:
+    """Download IMDB dataset files.
+
+    Args:
+        force: re-download even when the file is already on disk. Without this
+            there is no way to refresh: IMDB reissues these dumps daily, but
+            every existing file is skipped, so a "refresh" call returns OK in
+            under a second having done nothing. That is exactly what happened on
+            2026-09-08 — the scheduled job logged success while the datasets
+            stayed four and a half months old.
+
+    A forced download goes to a temporary file and is moved into place only on
+    success, so a failed refresh cannot destroy a working dataset.
+    """
     global _datasets_downloading
     _datasets_downloading = True
     try:
         dest = _dataset_dir()
         dest.mkdir(parents=True, exist_ok=True)
-        logger.info("Dataset directory: %s", dest)
+        logger.info("Dataset directory: %s (force=%s)", dest, force)
 
         for filename, url in DATASET_URLS.items():
             filepath = dest / filename
-            if filepath.exists():
+            if filepath.exists() and not force:
                 size_mb = filepath.stat().st_size / 1e6
                 logger.info("Dataset already exists: %s (%.1f MB)", filepath, size_mb)
                 continue
 
             logger.info("Downloading %s ...", url)
             t0 = time.perf_counter()
+            target = filepath.with_suffix(filepath.suffix + ".tmp") if force else filepath
             subprocess.run(
-                ["curl", "-L", "-o", str(filepath), url],
+                ["curl", "-L", "--fail", "-o", str(target), url],
                 check=True,
             )
+            if target != filepath:
+                target.replace(filepath)
             elapsed = time.perf_counter() - t0
             size_mb = filepath.stat().st_size / 1e6
             speed = size_mb / elapsed if elapsed > 0 else 0
@@ -299,7 +339,7 @@ def download_datasets() -> None:
                 speed,
             )
 
-        _download_anime_list()
+        _download_anime_list(force=force)
     finally:
         _datasets_downloading = False
 
@@ -324,12 +364,25 @@ def _filter_fingerprint() -> dict:
     the new filters never run. Lost an afternoon to exactly that on 2026-09-07.
     """
     ds = get_settings().imdb_datasets
-    return {
+    fp = {
         "min_vote_count": ds.min_vote_count,
         "min_rating": ds.min_rating,
         "min_year": ds.min_year,
         "include_title_types": sorted(ds.include_title_types),
     }
+    # Also key on the source files. A dataset refresh is otherwise invisible:
+    # the filters are unchanged, so the cache looks valid and five months of new
+    # titles never enter the pool. Size as well as mtime, because a restored
+    # backup can carry an old mtime forward.
+    dest = _dataset_dir()
+    datasets = {}
+    for filename in sorted(DATASET_URLS):
+        f = dest / filename
+        if f.exists():
+            st = f.stat()
+            datasets[filename] = [int(st.st_mtime), st.st_size]
+    fp["datasets"] = datasets
+    return fp
 
 
 def _load_cache() -> list[dict] | None:

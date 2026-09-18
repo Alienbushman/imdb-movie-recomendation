@@ -2,6 +2,7 @@
 
 import gzip
 import io
+from pathlib import Path
 
 from app.services.candidates import _load_crew_data, _resolve_names
 
@@ -233,3 +234,117 @@ class TestCacheFingerprint:
         C._save_cache([{"imdb_id": "tt1"}])
         C._fingerprint_path().unlink()
         assert C._load_cache() is None
+
+    def test_fingerprint_tracks_dataset_freshness(self, monkeypatch, tmp_path):
+        """A dataset refresh must invalidate the cache too. The filters are
+        unchanged by a refresh, so keying on them alone left five months of new
+        titles outside the pool with everything looking healthy."""
+        from app.services import candidates as C
+
+        ds_dir = tmp_path / "datasets"
+        ds_dir.mkdir()
+        monkeypatch.setattr(C, "_dataset_dir", lambda: ds_dir)
+        monkeypatch.setattr(C, "_cache_path", lambda: tmp_path / "imdb_candidates.json")
+        for name in C.DATASET_URLS:
+            (ds_dir / name).write_text("v1")
+
+        C._save_cache([{"imdb_id": "tt1"}])
+        assert C._load_cache() is not None
+
+        first = next(iter(sorted(C.DATASET_URLS)))
+        (ds_dir / first).write_text("v2-is-a-different-size")
+        assert C._load_cache() is None, "a refreshed dataset must invalidate the cache"
+
+
+# --- dataset refresh requires force ---
+
+
+class TestDatasetForceDownload:
+    """Regression: there was no way to refresh the IMDB dumps. download_datasets()
+    skipped every file already on disk, so the scheduled refresh job returned OK
+    in under a second having done nothing and the datasets sat 4.5 months stale
+    while reporting success (2026-09-08)."""
+
+    def test_existing_file_skipped_without_force(self, monkeypatch, tmp_path):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_dataset_dir", lambda: tmp_path)
+        monkeypatch.setattr(C, "_download_anime_list", lambda force=False: None)
+        for name in C.DATASET_URLS:
+            (tmp_path / name).write_text("old")
+        calls = []
+        monkeypatch.setattr(C.subprocess, "run", lambda *a, **k: calls.append(a))
+        C.download_datasets()
+        assert calls == [], "existing files must not be re-fetched by default"
+
+    def test_force_redownloads_via_tempfile(self, monkeypatch, tmp_path):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_dataset_dir", lambda: tmp_path)
+        monkeypatch.setattr(C, "_download_anime_list", lambda force=False: None)
+        for name in C.DATASET_URLS:
+            (tmp_path / name).write_text("old")
+
+        targets = []
+
+        def fake_run(cmd, **kwargs):
+            out = Path(cmd[cmd.index("-o") + 1])
+            targets.append(out.name)
+            out.write_text("new")
+            return None
+
+        monkeypatch.setattr(C.subprocess, "run", fake_run)
+        C.download_datasets(force=True)
+
+        assert targets, "force must re-fetch"
+        assert all(t.endswith(".tmp") for t in targets), "must download to a temp file"
+        for name in C.DATASET_URLS:
+            assert (tmp_path / name).read_text() == "new"
+            assert not (tmp_path / (name + ".tmp")).exists(), "temp file must be moved, not left"
+
+
+# --- anime whitelist accepts both upstream shapes ---
+
+
+class TestAnimeIdParsing:
+    """Regression: upstream Fribb/anime-lists moved imdb_id from a string to a
+    list. Discovered 2026-09-18 when the file refreshed for the first time since
+    April and the pipeline died with "unhashable type: 'list'". The file is now
+    100% lists/nulls, so the string-only parser would have yielded an empty set
+    even without the crash."""
+
+    @staticmethod
+    def _write(tmp_path, entries):
+        import json
+
+        (tmp_path / "anime-list-mini.json").write_text(json.dumps(entries))
+
+    def test_list_shape(self, monkeypatch, tmp_path):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_dataset_dir", lambda: tmp_path)
+        self._write(tmp_path, [{"imdb_id": ["tt1", "tt2"]}, {"imdb_id": None}])
+        assert C._load_anime_ids() == {"tt1", "tt2"}
+
+    def test_string_shape_still_supported(self, monkeypatch, tmp_path):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_dataset_dir", lambda: tmp_path)
+        self._write(tmp_path, [{"imdb_id": "tt1"}, {"imdb_id": ""}])
+        assert C._load_anime_ids() == {"tt1"}
+
+    def test_mixed_and_malformed(self, monkeypatch, tmp_path):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_dataset_dir", lambda: tmp_path)
+        self._write(tmp_path, [{"imdb_id": ["tt1", None, 7]}, {"imdb_id": "tt2"}, {}])
+        assert C._load_anime_ids() == {"tt1", "tt2"}
+
+    def test_empty_result_is_logged_as_error(self, monkeypatch, tmp_path, caplog):
+        from app.services import candidates as C
+
+        monkeypatch.setattr(C, "_dataset_dir", lambda: tmp_path)
+        self._write(tmp_path, [{"imdb_id": None}, {"imdb_id": []}])
+        with caplog.at_level("ERROR"):
+            assert C._load_anime_ids() == set()
+        assert any("parsed to 0 IDs" in r.message for r in caplog.records)

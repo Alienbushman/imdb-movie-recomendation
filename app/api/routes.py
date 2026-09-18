@@ -74,21 +74,34 @@ router = APIRouter()
         500: {"description": "Download failed (network error or disk issue)."},
     },
 )
-def download_datasets():
-    """Download the two IMDB bulk dataset files needed to generate recommendations.
+def download_datasets(
+    force: bool = Query(
+        False,
+        description=(
+            "Re-download files that are already on disk. Required for a real "
+            "refresh — without it every existing file is skipped and the call "
+            "returns OK in under a second having done nothing."
+        ),
+    ),
+):
+    """Download the IMDB bulk dataset files needed to generate recommendations.
 
     - **title.basics.tsv.gz** (~210 MB compressed) — title metadata: type, year, runtime, genres
     - **title.ratings.tsv.gz** (~8 MB compressed) — community ratings and vote counts
 
-    Files are saved to `data/datasets/` and only downloaded if not already present,
-    so this endpoint is safe to call repeatedly. Re-call it whenever you want to refresh
-    the datasets with the latest IMDB data.
+    By default files are only downloaded if **not already present**, so the call is
+    cheap and safe to repeat before `/recommendations`.
+
+    IMDB reissues these dumps daily. To pick up newer data you must pass
+    `force=true` — a plain re-call will *not* refresh anything. A forced download
+    writes to a temp file and moves it into place on success, so a failed refresh
+    leaves the working datasets intact.
 
     **This must be run before calling any `/recommendations` endpoint.**
     """
-    logger.info("POST /download-datasets — starting dataset download")
+    logger.info("POST /download-datasets — starting dataset download (force=%s)", force)
     try:
-        msg = ensure_datasets()
+        msg = ensure_datasets(force=force)
         logger.info("POST /download-datasets — completed: %s", msg)
         return {"status": msg}
     except Exception as e:
