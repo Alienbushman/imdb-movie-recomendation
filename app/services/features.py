@@ -73,7 +73,10 @@ def _top_genre_pairs(rated_titles: list[RatedTitle], max_pairs: int) -> list[str
     return [pair for pair, _ in pair_counts.most_common(max_pairs)]
 
 
-def _bayesian_avg(ratings: list[int], global_mean: float, c: float = 5.0) -> float:
+_SHRINKAGE_C = 5.0
+
+
+def _bayesian_avg(ratings: list[int], global_mean: float, c: float = _SHRINKAGE_C) -> float:
     """Shrink a raw average toward the global mean to reduce noise from sparse data.
 
     A director with one highly-rated film won't dominate as heavily as one with ten.
@@ -167,6 +170,9 @@ def build_taste_profile(
     # Subtask 6: Top genre interaction pairs
     genre_pairs = _top_genre_pairs(rated_titles, max_pairs)
 
+    def _totals(ratings_by_key: dict[str, list[int]]) -> dict[str, list[float]]:
+        return {k: [float(sum(v)), float(len(v))] for k, v in ratings_by_key.items()}
+
     return TasteProfile(
         director_avg=director_avg,
         actor_avg=actor_avg,
@@ -175,7 +181,39 @@ def build_taste_profile(
         composer_avg=composer_avg,
         cinematographer_avg=cinematographer_avg,
         genre_pairs=genre_pairs,
+        director_totals=_totals(director_ratings),
+        actor_totals=_totals(actor_ratings) if rated_actors else {},
+        genre_totals=_totals(genre_ratings),
+        writer_totals=_totals(writer_ratings) if rated_writers else {},
+        composer_totals=_totals(composer_ratings) if rated_composers else {},
+        cinematographer_totals=(
+            _totals(cine_ratings) if rated_cinematographers else {}
+        ),
+        global_mean=global_mean,
+        shrinkage_c=_SHRINKAGE_C,
     )
+
+
+def loo_avg(
+    totals: dict[str, list[float]],
+    key: str,
+    own_rating: float,
+    global_mean: float,
+    c: float,
+) -> float | None:
+    """Bayesian average for ``key`` with ``own_rating`` removed from the pool.
+
+    Returns None when nothing is left — a director with a single rated film has
+    no independent evidence about the user's taste, so the honest answer is
+    "unknown", not a number derived from the label being predicted.
+    """
+    entry = totals.get(key)
+    if not entry:
+        return None
+    total, count = entry[0] - own_rating, entry[1] - 1
+    if count <= 0:
+        return None
+    return (total + c * global_mean) / (count + c)
 
 
 def _build_genre_flags(genres: list[str]) -> dict[str, int]:
@@ -184,7 +222,9 @@ def _build_genre_flags(genres: list[str]) -> dict[str, int]:
     return {f"genre_{g.lower().replace('-', '_')}": int(g in genre_set) for g in ALL_GENRES}
 
 
-def _build_genre_affinity(genres: list[str], taste: TasteProfile | None) -> dict[str, float]:
+def _build_genre_affinity(
+    genres: list[str], taste: TasteProfile | None, own_rating: float | None = None
+) -> dict[str, float]:
     """Subtask 1: User's average rating for THIS title's genres (0.0 for the rest).
 
     The affinity is gated on the title actually carrying the genre. Returning
@@ -196,7 +236,16 @@ def _build_genre_affinity(genres: list[str], taste: TasteProfile | None) -> dict
     if taste is None:
         return {k: 0.0 for k in keys.values()}
     genre_set = {g.strip() for g in genres}
-    return {keys[g]: (taste.genre_avg.get(g, 0.0) if g in genre_set else 0.0) for g in ALL_GENRES}
+
+    def _value(g: str) -> float:
+        if g not in genre_set:
+            return 0.0
+        if own_rating is None or (taste.genre_avg and not taste.genre_totals):
+            return taste.genre_avg.get(g, 0.0)
+        v = loo_avg(taste.genre_totals, g, own_rating, taste.global_mean, taste.shrinkage_c)
+        return v if v is not None else 0.0
+
+    return {keys[g]: _value(g) for g in ALL_GENRES}
 
 
 def _build_language_flags(language: str | None, top_languages: list[str]) -> dict[str, int]:
@@ -261,8 +310,21 @@ def _compute_taste_features(
     writers: list[str] | None = None,
     composers: list[str] | None = None,
     cinematographers: list[str] | None = None,
+    own_rating: float | None = None,
 ) -> dict:
-    """Compute features derived from the user's taste profile."""
+    """Compute features derived from the user's taste profile.
+
+    Args:
+        own_rating: set when featurising a title that is itself part of the
+            taste profile. Its rating is then subtracted back out of every
+            person average (leave-one-out encoding), and a person left with no
+            other rated title reports as unknown. Without this the profile is
+            built over train+test together, so a rated film's director average
+            contains that film's own rating — the feature leaks the label, and
+            for 32% of this library the director has exactly one rated film so
+            the leak is nearly total. Measured 2026-09-19: NDCG@10 0.79 leaky
+            against 0.38 honest.
+    """
     director_taste_score = 0.0
     has_known_director = False
     director_taste_count = 0
@@ -281,8 +343,32 @@ def _compute_taste_features(
     has_known_cinematographer = False
 
     if taste:
+        def _scores(names, avg_map, totals_map):
+            """Per-person averages, leave-one-out when this title is in the profile.
+
+            A profile carrying no totals predates leave-one-out encoding (an old
+            pickle, or one built by hand in a test). LOO is impossible there, so
+            fall back to the plain average rather than silently reporting every
+            person as unknown — but say so, because that path still leaks.
+            """
+            if own_rating is None:
+                return [avg_map[n] for n in names if n in avg_map]
+            if avg_map and not totals_map:
+                logger.warning(
+                    "Taste profile has averages but no totals — cannot apply "
+                    "leave-one-out encoding; person features will leak the label. "
+                    "Retrain to rebuild the profile."
+                )
+                return [avg_map[n] for n in names if n in avg_map]
+            out = []
+            for n in names:
+                v = loo_avg(totals_map, n, own_rating, taste.global_mean, taste.shrinkage_c)
+                if v is not None:
+                    out.append(v)
+            return out
+
         # Directors (subtask 2: count + mean in addition to max)
-        dir_scores = [taste.director_avg[d] for d in directors if d in taste.director_avg]
+        dir_scores = _scores(directors, taste.director_avg, taste.director_totals)
         if dir_scores:
             has_known_director = True
             director_taste_score = max(dir_scores)
@@ -290,7 +376,7 @@ def _compute_taste_features(
             director_taste_mean = sum(dir_scores) / len(dir_scores)
 
         # Actors (subtask 2: count + mean in addition to max)
-        act_scores = [taste.actor_avg[a] for a in actors if a in taste.actor_avg]
+        act_scores = _scores(actors, taste.actor_avg, taste.actor_totals)
         if act_scores:
             has_known_actor = True
             actor_taste_score = max(act_scores)
@@ -299,7 +385,7 @@ def _compute_taste_features(
 
         # Writers (subtask 4)
         if writers:
-            w_scores = [taste.writer_avg[w] for w in writers if w in taste.writer_avg]
+            w_scores = _scores(writers, taste.writer_avg, taste.writer_totals)
             if w_scores:
                 has_known_writer = True
                 writer_taste_score = max(w_scores)
@@ -308,18 +394,16 @@ def _compute_taste_features(
 
         # Composers (subtask 8)
         if composers:
-            c_scores = [taste.composer_avg[c] for c in composers if c in taste.composer_avg]
+            c_scores = _scores(composers, taste.composer_avg, taste.composer_totals)
             if c_scores:
                 has_known_composer = True
                 composer_taste_score = max(c_scores)
 
         # Cinematographers (subtask 8)
         if cinematographers:
-            ci_scores = [
-                taste.cinematographer_avg[c]
-                for c in cinematographers
-                if c in taste.cinematographer_avg
-            ]
+            ci_scores = _scores(
+                cinematographers, taste.cinematographer_avg, taste.cinematographer_totals
+            )
             if ci_scores:
                 has_known_cinematographer = True
                 cinematographer_taste_score = max(ci_scores)
@@ -352,13 +436,16 @@ def rated_title_to_features(
     settings = get_settings()
     top_languages = settings.features.top_languages
 
+    own = float(title.user_rating)
     genre_flags = _build_genre_flags(title.genres)
-    genre_affinity = _build_genre_affinity(title.genres, taste)
+    genre_affinity = _build_genre_affinity(title.genres, taste, own_rating=own)
     derived = _compute_derived_features(
         title.imdb_rating, title.num_votes, title.year, title.runtime_mins
     )
     pop_feats = _compute_popularity_features(title.num_votes, title.year)
-    taste_feats = _compute_taste_features(title.directors, [], taste, writers=title.writers)
+    taste_feats = _compute_taste_features(
+        title.directors, [], taste, writers=title.writers, own_rating=own
+    )
     language_flags = _build_language_flags(title.language, top_languages)
     type_flags = _build_type_flags(title.title_type)
     genre_pairs = taste.genre_pairs if taste else []

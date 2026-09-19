@@ -80,6 +80,20 @@ class TasteProfile(BaseModel):
         default=[],
         description="Top genre interaction pairs derived from user's watchlist.",
     )
+    # Raw [sum, count] per key, kept so a rated title's own rating can be
+    # subtracted back out when featurising it. Without this, director_avg for a
+    # film is computed from a set that includes that film, so the feature leaks
+    # the label straight into training — and for 32% of this library the
+    # director has exactly one rated film, making the feature a shrunk copy of
+    # the answer.
+    director_totals: dict[str, list[float]] = Field(default={})
+    actor_totals: dict[str, list[float]] = Field(default={})
+    genre_totals: dict[str, list[float]] = Field(default={})
+    writer_totals: dict[str, list[float]] = Field(default={})
+    composer_totals: dict[str, list[float]] = Field(default={})
+    cinematographer_totals: dict[str, list[float]] = Field(default={})
+    global_mean: float = Field(default=7.0)
+    shrinkage_c: float = Field(default=5.0)
 
 
 class FeatureVector(BaseModel):

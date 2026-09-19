@@ -17,7 +17,12 @@ from app.services.candidates import (
     load_crew_for_rated_titles,
 )
 from app.services.dismissed import get_dismissed_ids
-from app.services.ingest import get_seen_imdb_ids, load_watchlist
+from app.services.ingest import (
+    get_seen_imdb_ids,
+    load_seen_ledger,
+    load_watchlist,
+    merge_seen_ledger,
+)
 from app.services.model import load_taste_model, train_taste_model
 from app.services.recommend import build_recommendations
 from app.services.scrape import fetch_imdb_ratings_csv, save_ratings_csv
@@ -143,7 +148,7 @@ def run_pipeline(
             titles = load_watchlist(csv_content=csv_content)
         else:
             titles = load_watchlist()
-        seen_ids = get_seen_imdb_ids(titles)
+        seen_ids = merge_seen_ledger(get_seen_imdb_ids(titles))
 
         # Merge dismissed into exclusion set so candidates are skipped before scoring
         dismissed = get_dismissed_ids()
@@ -362,7 +367,11 @@ def get_recommendations_from_db(
         rated_titles = load_rated_titles()
         _state["titles"] = rated_titles  # cache so subsequent GET requests skip the DB read
 
-    seen_ids = _state["seen_ids"] if _state["seen_ids"] is not None else set()
+    # Read the ledger from disk rather than trusting in-process state: _state is
+    # empty on a cold start, so a freshly restarted process would exclude
+    # nothing and happily recommend films the user has already rated. It also
+    # goes stale the moment the ledger grows.
+    seen_ids = load_seen_ledger() | (_state["seen_ids"] or set())
 
     if model is None:
         loaded = load_taste_model()

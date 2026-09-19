@@ -530,3 +530,71 @@ class TestFeatureVectorToArray:
         df = features_to_dataframe([fv])
         arr = feature_vector_to_array(fv, list(df.columns))
         assert arr.dtype == float
+
+
+# --- leave-one-out encoding: a rated title must not see its own label ---
+
+
+class TestLeaveOneOutEncoding:
+    """The taste profile is built from the same titles it is then used to
+    featurise, so a rated film's director average contained that film's own
+    rating. 32% of this library's rated titles have only single-film directors,
+    making the feature a shrunk copy of the answer. Measured 2026-09-19:
+    NDCG@10 0.7887 with the leak, 0.3816 without."""
+
+    @staticmethod
+    def _profile(ratings_by_director):
+        from app.services.features import build_taste_profile
+
+        titles = []
+        i = 0
+        for director, ratings in ratings_by_director.items():
+            for r in ratings:
+                i += 1
+                titles.append(
+                    _make_rated(
+                        imdb_id=f"tt{i:07d}",
+                        title=f"T{i}",
+                        user_rating=r,
+                        genres=["Drama"],
+                        directors=[director],
+                    )
+                )
+        return build_taste_profile(titles), titles
+
+    def test_single_film_director_reports_unknown(self):
+        from app.services.features import rated_title_to_features
+
+        taste, titles = self._profile({"Solo": [10]})
+        fv = rated_title_to_features(titles[0], taste)
+        assert fv.has_known_director is False, "a 1-film director is pure label leakage"
+        assert fv.director_taste_score == 0.0
+
+    def test_own_rating_removed_from_multi_film_director(self):
+        from app.services.features import rated_title_to_features
+
+        taste, titles = self._profile({"Multi": [10, 2, 2, 2, 2, 2]})
+        top = next(t for t in titles if t.user_rating == 10)
+        fv = rated_title_to_features(top, taste)
+        assert fv.has_known_director is True
+        # The 10 must not pull its own feature up: the other five are all 2s.
+        assert fv.director_taste_score < taste.director_avg["Multi"]
+
+    def test_candidates_use_the_full_average(self):
+        from app.services.features import candidate_to_features
+
+        taste, _ = self._profile({"Multi": [10, 2, 2, 2, 2, 2]})
+        cand = _make_candidate(genres=["Drama"], directors=["Multi"])
+        fv = candidate_to_features(cand, taste)
+        # Not in the profile, so nothing to leave out — full average is correct.
+        assert fv.director_taste_score == taste.director_avg["Multi"]
+
+    def test_legacy_profile_without_totals_falls_back_loudly(self, caplog):
+        from app.models.schemas import TasteProfile
+        from app.services.features import rated_title_to_features
+        taste = TasteProfile(director_avg={"Director A": 9.0})
+        title = _make_rated(directors=["Director A"])
+        with caplog.at_level("WARNING"):
+            fv = rated_title_to_features(title, taste)
+        assert fv.director_taste_score == 9.0
+        assert any("leave-one-out" in r.message for r in caplog.records)

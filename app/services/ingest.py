@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 import time
 from collections import Counter
@@ -102,6 +103,64 @@ def load_watchlist(
     return titles
 
 
+def _seen_ledger_path() -> Path:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    return PROJECT_ROOT / settings.data.cache_dir / "seen_ids.json"
+
+
 def get_seen_imdb_ids(titles: list[RatedTitle]) -> set[str]:
     """Extract the set of IMDB IDs the user has already rated."""
     return {t.imdb_id for t in titles}
+
+
+def load_seen_ledger() -> set[str]:
+    """Read the persisted seen-ID ledger. Returns an empty set if absent."""
+    path = _seen_ledger_path()
+    if not path.exists():
+        return set()
+    try:
+        return set(json.loads(path.read_text()))
+    except (OSError, json.JSONDecodeError):
+        logger.warning("Seen-ID ledger at %s is unreadable", path)
+        return set()
+
+
+def merge_seen_ledger(current: set[str]) -> set[str]:
+    """Union ``current`` into the persisted seen-ID ledger and return the whole set.
+
+    A single scrape is NOT a complete picture. IMDB's paginated ratings view
+    stops at 2250 entries while reporting a higher total, so as new ratings are
+    added the oldest silently drop out of the export. Observed 2026-09-19: the
+    window had moved from 2012-12-02..2026-04-07 to 2013-04-02..2026-09-05, and
+    films rated back in 2012-13 (The Sixth Sense, Saving Private Ryan, Life Is
+    Beautiful) were being recommended back as though never watched.
+
+    The ledger therefore only ever grows: once rated, always excluded.
+    """
+    path = _seen_ledger_path()
+    known: set[str] = set()
+    if path.exists():
+        try:
+            known = set(json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Seen-ID ledger at %s is unreadable — rebuilding from this scrape", path)
+
+    merged = known | current
+    if merged != known:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(sorted(merged)))
+        except OSError as e:
+            logger.warning("Could not persist seen-ID ledger: %s", e)
+
+    dropped = known - current
+    if dropped:
+        logger.warning(
+            "%d previously-rated titles are missing from the latest export "
+            "(IMDB pagination window) — still excluding them from recommendations",
+            len(dropped),
+        )
+    logger.info("Seen IDs: %d in this export, %d known in total", len(current), len(merged))
+    return merged

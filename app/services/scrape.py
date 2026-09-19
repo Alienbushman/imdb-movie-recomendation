@@ -371,6 +371,18 @@ def fetch_imdb_ratings_csv(imdb_url: str, timeout: float = 120.0) -> str:
                 )
 
                 if not page_info.get("hasNextPage"):
+                    if total_expected and len(all_rows) < total_expected:
+                        # IMDB's paginated view stops at 2250 while still
+                        # reporting the real total. The export is a moving
+                        # window: new ratings push the oldest out. Do not let
+                        # that pass as a complete picture.
+                        logger.warning(
+                            "IMDB stopped paginating at %d of %d ratings — the export is "
+                            "truncated and the OLDEST ratings are missing. Recommendations "
+                            "rely on the persisted seen-ID ledger to avoid re-suggesting them.",
+                            len(all_rows),
+                            total_expected,
+                        )
                     break
                 if total_expected and len(all_rows) >= total_expected:
                     break
